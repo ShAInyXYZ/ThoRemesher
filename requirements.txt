@@ -1,0 +1,10 @@
+numpy>=1.26
+scipy>=1.11
+trimesh>=4.0
+pymeshlab>=2024
+pyassimp>=5.2
+pyvista>=0.43
+fastapi>=0.110
+uvicorn[standard]>=0.27
+python-multipart>=0.0.9
+rtree>=1.1

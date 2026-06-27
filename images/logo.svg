@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#4cc2ff" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#4cc2ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="meshGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1933e6"/>
+      <stop offset="33%" stop-color="#1ab3f2"/>
+      <stop offset="66%" stop-color="#facc26"/>
+      <stop offset="100%" stop-color="#f23333"/>
+    </linearGradient>
+    <linearGradient id="wireGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4cc2ff"/>
+      <stop offset="100%" stop-color="#36c98a"/>
+    </linearGradient>
+  </defs>
+
+  <!-- glow -->
+  <circle cx="60" cy="60" r="58" fill="url(#glow)"/>
+
+  <!-- hex mesh pattern: dense left, sparse right -->
+  <g stroke="url(#wireGrad)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- dense triangles (detail) -->
+    <path d="M 32 30 L 48 38 L 36 50 Z M 48 38 L 58 30 L 50 50 Z M 36 50 L 48 38 L 50 50 Z"/>
+    <path d="M 32 50 L 36 50 L 32 64 Z M 36 50 L 50 50 L 40 64 Z"/>
+    <!-- transition -->
+    <path d="M 50 50 L 64 44 L 58 62 Z M 40 64 L 50 50 L 58 62 Z"/>
+  </g>
+
+  <!-- sparse triangles (flat) -->
+  <g stroke="url(#meshGrad)" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 64 44 L 84 40 L 78 62 Z"/>
+    <path d="M 58 62 L 64 44 L 78 62 Z"/>
+    <path d="M 40 64 L 58 62 L 52 84 Z"/>
+    <path d="M 58 62 L 78 62 L 68 82 Z"/>
+    <path d="M 52 84 L 58 62 L 68 82 Z"/>
+    <path d="M 68 82 L 78 62 L 86 82 Z"/>
+  </g>
+
+  <!-- vertices -->
+  <g fill="#e6edf3">
+    <circle cx="32" cy="30" r="2.5"/>
+    <circle cx="48" cy="38" r="2.5"/>
+    <circle cx="58" cy="30" r="2.5"/>
+    <circle cx="36" cy="50" r="2.5"/>
+    <circle cx="50" cy="50" r="2.5"/>
+    <circle cx="32" cy="64" r="2.5"/>
+    <circle cx="40" cy="64" r="2.5"/>
+    <circle cx="64" cy="44" r="2.5"/>
+    <circle cx="58" cy="62" r="2.5"/>
+    <circle cx="84" cy="40" r="3"/>
+    <circle cx="78" cy="62" r="3"/>
+    <circle cx="52" cy="84" r="3"/>
+    <circle cx="68" cy="82" r="3"/>
+    <circle cx="86" cy="82" r="3"/>
+  </g>
+</svg>

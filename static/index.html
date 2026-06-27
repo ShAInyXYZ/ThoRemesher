@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Curvature-Aware Remesher</title>
+<link rel="stylesheet" href="style.css" />
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+  <div id="dropzone" class="dropzone hidden">
+    <div class="dz-inner">
+      <div class="dz-icon">⬇</div>
+      <div class="dz-text">Drop FBX / GLB / GLTF / OBJ / PLY / STL here</div>
+    </div>
+  </div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">◐</span>
+      <div>
+        <div class="title">Curvature-Aware Remesher</div>
+        <div class="subtitle" id="status">Idle — drop a model to begin</div>
+      </div>
+    </div>
+    <div class="stats" id="stats">
+      <div class="chip"><span class="lbl">Original</span><span class="val" id="st-orig">—</span></div>
+      <div class="chip"><span class="lbl">Remeshed</span><span class="val" id="st-proc">—</span></div>
+      <div class="chip"><span class="lbl">Reduction</span><span class="val" id="st-red">—</span></div>
+      <div class="chip"><span class="lbl">Time</span><span class="val" id="st-time">—</span></div>
+    </div>
+    <div class="tb-actions">
+      <button id="btn-curv" class="toggle" title="Toggle curvature heatmap">Curvature</button>
+      <button id="btn-wire" class="toggle" title="Toggle wireframe">Wireframe</button>
+      <button id="btn-sync" class="toggle on" title="Link the two cameras">Link Cameras</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="presets">
+        <label class="presets-label">Preset</label>
+        <div class="preset-row">
+          <select id="preset-select" class="preset-select"></select>
+          <button id="btn-save-preset" class="icon-btn" title="Save current settings as a custom preset">＋</button>
+        </div>
+      </div>
+
+      <h3>Remesh settings</h3>
+
+      <div class="field">
+        <label>Flat-area edge size <b id="v-flat">2.5×</b></label>
+        <input type="range" id="flat_factor" min="1" max="10" step="0.1" value="2.5" />
+        <small>How coarse flat regions become (× avg edge).</small>
+      </div>
+
+      <div class="field">
+        <label>Detail edge size <b id="v-detail">0.9×</b></label>
+        <input type="range" id="detail_factor" min="0.3" max="4" step="0.1" value="0.9" />
+        <small>How fine detailed regions stay.</small>
+      </div>
+
+      <div class="field">
+        <label>Contrast <b id="v-contrast">2.5</b></label>
+        <input type="range" id="contrast" min="0.5" max="6" step="0.1" value="2.5" />
+        <small>Sharpness of flat ⇄ detailed transition.</small>
+      </div>
+
+      <div class="field">
+        <label>Feature angle <b id="v-feat">30°</b></label>
+        <input type="range" id="feature_angle" min="0" max="120" step="1" value="30" />
+        <small>Creases sharper than this are preserved.</small>
+      </div>
+
+      <div class="field">
+        <label>Iterations <b id="v-iter">8</b></label>
+        <input type="range" id="iterations" min="1" max="20" step="1" value="8" />
+        <small>More passes = smoother, more even triangles.</small>
+      </div>
+
+      <div class="field">
+        <label>Detail retention <b id="v-ret">60k</b></label>
+        <input type="range" id="max_work_faces" min="10000" max="200000" step="10000" value="60000" />
+        <small>Higher keeps more original detail on dense models.</small>
+      </div>
+
+      <div class="checks">
+        <label><input type="checkbox" id="pre_simplify" /> Pre-simplify (huge meshes)</label>
+        <label><input type="checkbox" id="colorize" checked /> Colorize by curvature</label>
+        <label><input type="checkbox" id="preserve_boundary" checked /> Preserve boundary</label>
+      </div>
+
+      <div class="btn-row">
+        <button id="btn-remesh" class="primary" disabled>Remesh</button>
+        <button id="btn-export" class="secondary" disabled title="Export remeshed mesh">Export</button>
+      </div>
+      <div class="export-menu hidden" id="export-menu">
+        <button data-fmt="glb">GLB</button>
+        <button data-fmt="obj">OBJ</button>
+        <button data-fmt="ply">PLY</button>
+        <button data-fmt="stl">STL</button>
+      </div>
+      <button id="btn-open" class="ghost">Open another file…</button>
+      <input type="file" id="file-input" accept=".fbx,.glb,.gltf,.obj,.ply,.stl" hidden />
+
+      <div class="legend">
+        <div class="legend-bar"></div>
+        <div class="legend-labels"><span>flat</span><span>detailed</span></div>
+      </div>
+    </aside>
+
+    <main class="split" id="split">
+      <section class="panel" id="panel-left">
+        <div class="panel-tag">ORIGINAL</div>
+        <canvas id="canvas-left"></canvas>
+      </section>
+      <div class="divider" id="divider"></div>
+      <section class="panel" id="panel-right">
+        <div class="panel-tag panel-tag-right">REMESHED</div>
+        <canvas id="canvas-right"></canvas>
+        <div class="empty-hint" id="empty-right">Press <b>Remesh</b> to generate</div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

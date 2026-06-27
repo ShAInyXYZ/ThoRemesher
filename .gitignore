@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# Temporary session data (uploaded/processed models)
+_tmp/
+ThoRemesher/_tmp/
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test models / exports (keep repo clean)
+*.glb
+*.gltf
+*.fbx
+*.obj
+*.ply
+*.stl
+!ThoRemesher/static/**/*.glb
