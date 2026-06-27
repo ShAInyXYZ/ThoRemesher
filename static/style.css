@@ -28,7 +28,14 @@ body {
   border-bottom: 1px solid var(--line); flex: 0 0 auto;
 }
 .brand { display: flex; align-items: center; gap: 12px; min-width: 260px; }
-.logo { font-size: 28px; color: var(--accent); line-height: 1; }
+.logo {
+  display: flex; align-items: center; justify-content: center; line-height: 0;
+  width: 44px; height: 44px; flex: 0 0 44px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #1d3a6b 0%, #14202e 70%, #0e1116 100%);
+  border: 1px solid rgba(76, 194, 255, 0.3);
+  box-shadow: 0 0 12px rgba(76, 194, 255, 0.18), inset 0 0 10px rgba(0, 0, 0, 0.4);
+}
+.logo svg { width: 30px; height: 30px; filter: drop-shadow(0 0 4px rgba(76, 194, 255, 0.4)); }
 .title { font-weight: 700; font-size: 15px; letter-spacing: .2px; }
 .subtitle { font-size: 12px; color: var(--muted); }
 .stats { display: flex; gap: 8px; flex: 1; flex-wrap: wrap; }
@@ -80,14 +87,19 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 /* presets */
 .presets { margin-bottom: 18px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
 .presets-label { display: block; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; margin-bottom: 8px; }
-.preset-row { display: flex; gap: 6px; }
+.preset-row { display: flex; gap: 6px; align-items: stretch; }
 .preset-select {
-  flex: 1; background: var(--panel); color: var(--txt); border: 1px solid var(--line);
-  border-radius: 8px; padding: 7px 8px; font-size: 13px; font-family: inherit; cursor: pointer;
+  flex: 1 1 auto; min-width: 0; max-width: 220px;
+  background: var(--panel); color: var(--txt); border: 1px solid var(--line);
+  border-radius: 8px; padding: 7px 26px 7px 8px; font-size: 13px; font-family: inherit;
+  cursor: pointer; appearance: none; -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238b97a7' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 9px center;
+  text-overflow: ellipsis; overflow: hidden; white-space: nowrap;
 }
 .preset-select:hover { border-color: var(--accent); }
 .icon-btn {
-  width: 38px; flex: 0 0 38px; padding: 0; font-size: 20px; line-height: 1;
+  width: 34px; flex: 0 0 34px; padding: 0; font-size: 18px; line-height: 1;
   background: var(--panel); border: 1px solid var(--line); border-radius: 8px; color: var(--accent);
   cursor: pointer; transition: .15s; display: flex; align-items: center; justify-content: center;
 }

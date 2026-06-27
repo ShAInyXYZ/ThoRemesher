@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#4cc2ff" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#4cc2ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="meshGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1933e6"/>
+      <stop offset="40%" stop-color="#1ab3f2"/>
+      <stop offset="70%" stop-color="#facc26"/>
+      <stop offset="100%" stop-color="#f23333"/>
+    </linearGradient>
+    <linearGradient id="wireGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4cc2ff"/>
+      <stop offset="100%" stop-color="#36c98a"/>
+    </linearGradient>
+  </defs>
+
+  <!-- glow -->
+  <ellipse cx="60" cy="48" rx="62" ry="58" fill="url(#glow)"/>
+
+  <!-- HAMMER HEAD: dense detail mesh -->
+  <g stroke="url(#wireGrad)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 30 20 L 60 20 L 60 34 Z M 30 20 L 60 34 L 30 34 Z"/>
+    <path d="M 60 20 L 90 20 L 90 34 Z M 60 20 L 90 34 L 60 34 Z"/>
+    <path d="M 30 34 L 60 34 L 60 48 Z M 30 34 L 60 48 L 30 48 Z"/>
+    <path d="M 60 34 L 90 34 L 90 48 Z M 60 34 L 90 48 L 60 48 Z"/>
+  </g>
+
+  <!-- HANDLE: sparse flat mesh -->
+  <g stroke="url(#meshGrad)" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 54 48 L 66 48 L 66 74 Z M 54 48 L 66 74 L 54 74 Z"/>
+    <path d="M 54 74 L 66 74 L 63 100 Z M 54 74 L 63 100 L 57 100 Z"/>
+  </g>
+
+  <!-- vertices: head (detail, small) -->
+  <g fill="#e6edf3">
+    <circle cx="30" cy="20" r="2.5"/>
+    <circle cx="60" cy="20" r="2.5"/>
+    <circle cx="90" cy="20" r="2.5"/>
+    <circle cx="30" cy="34" r="2.5"/>
+    <circle cx="60" cy="34" r="2.5"/>
+    <circle cx="90" cy="34" r="2.5"/>
+    <circle cx="30" cy="48" r="2.5"/>
+    <circle cx="60" cy="48" r="2.5"/>
+    <circle cx="90" cy="48" r="2.5"/>
+  </g>
+
+  <!-- vertices: handle (flat, larger) -->
+  <g fill="#e6edf3">
+    <circle cx="54" cy="48" r="3"/>
+    <circle cx="66" cy="48" r="3"/>
+    <circle cx="54" cy="74" r="3"/>
+    <circle cx="66" cy="74" r="3"/>
+    <circle cx="57" cy="100" r="3"/>
+    <circle cx="63" cy="100" r="3"/>
+  </g>
+</svg>

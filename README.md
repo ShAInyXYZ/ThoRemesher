@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="images/logo.svg" alt="ThoRemesher" width="100" />
+  <img src="images/hammer.svg" alt="ThoRemesher" width="100" />
 </p>
 
 <h1 align="center">ThoRemesher</h1>
@@ -90,7 +90,7 @@ The pipeline implements exactly this logic:
 5. **Heatmap** colors vertices blue→red so you can see the curvature field
 
 <p align="center">
-  <img src="images/logo.svg" alt="density logic" width="60" />
+  <img src="images/hammer.svg" alt="density logic" width="60" />
   <br/>
   <em>Left: dense detail · Right: simplified flats — the logo shows the density gradient</em>
 </p>
