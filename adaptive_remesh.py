@@ -57,7 +57,13 @@ class AdaptiveRemesher:
         self.target = list(target)
         self.feat = set(feature_edges or [])  # set of (min,max) crease edges
         self.reproject = reproject  # callable: pts(N,3)->pts(N,3) on orig surface
-        self.F = None
+        self.F = np.asarray(F, dtype=np.int64) if F is not None else None
+
+    def smooth(self, iterations):
+        """Public entry: tangential smoothing for N iterations (with reprojection)."""
+        for _ in range(iterations):
+            self._smooth()
+        return np.asarray(self.V, dtype=np.float64), np.asarray(self.F, dtype=np.int64)
 
     # ---- split edges longer than 4/3 * target ------------------------------
     def _split(self):

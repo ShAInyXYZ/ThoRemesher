@@ -12,6 +12,7 @@
   --radius: 10px;
 }
 * { box-sizing: border-box; }
+.hidden { display: none !important; }
 html, body { height: 100%; margin: 0; }
 body {
   background: var(--bg);
@@ -77,6 +78,22 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .checks { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; font-size: 13px; }
 .checks label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 
+/* tris/quad mode toggle */
+.mode-row { display: flex; gap: 0; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); margin-bottom: 14px; }
+.seg-btn {
+  flex: 1; padding: 9px 0; font-size: 13px; font-weight: 600; letter-spacing: 1px;
+  background: var(--panel); color: var(--muted); border: none; border-radius: 0;
+  cursor: pointer; transition: .15s; font-family: inherit;
+}
+.seg-btn + .seg-btn { border-left: 1px solid var(--line); }
+.seg-btn:hover { color: var(--txt); background: var(--panel2); }
+.seg-btn.active { background: var(--accent); color: #06121e; }
+.panel-sub { display: block; color: var(--muted); font-size: 11px; margin: -8px 0 12px; }
+
+.demo-row { margin-top: 10px; }
+.demo-label { display: block; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; margin-bottom: 6px; }
+.demo-row .preset-select { width: 100%; max-width: none; }
+
 .legend { margin-top: 18px; }
 .legend-bar {
   height: 10px; border-radius: 6px;
@@ -98,6 +115,14 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   text-overflow: ellipsis; overflow: hidden; white-space: nowrap;
 }
 .preset-select:hover { border-color: var(--accent); }
+/* inline editable number (Target quads) — looks like the accent readout */
+.num-input {
+  width: 84px; float: right; text-align: right;
+  background: var(--panel); color: var(--accent); font-weight: 600;
+  border: 1px solid var(--line); border-radius: 6px;
+  padding: 2px 6px; font-size: 13px; font-family: inherit;
+}
+.num-input:hover, .num-input:focus { border-color: var(--accent); outline: none; }
 .icon-btn {
   width: 34px; flex: 0 0 34px; padding: 0; font-size: 18px; line-height: 1;
   background: var(--panel); border: 1px solid var(--line); border-radius: 8px; color: var(--accent);
@@ -109,6 +134,11 @@ button.danger:hover { border-color: #f23333; color: #f23333; }
 
 /* export */
 .btn-row { display: flex; gap: 8px; }
+/* Postprocess section — sits at the bottom of the controls panel */
+.section { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.section-title { font-size: 11px; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 10px; }
+.section .btn-row { margin-top: 4px; }
+.muted-note { display: block; margin-top: 8px; font-size: 11px; color: var(--muted); }
 button.secondary {
   background: var(--panel2); border: 1px solid var(--accent2); color: var(--accent2);
   font-weight: 600; white-space: nowrap;

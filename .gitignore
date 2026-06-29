@@ -14,6 +14,15 @@ env/
 _tmp/
 ThoRemesher/_tmp/
 
+# Vendored third-party engines (download/build separately — not our code):
+#   _quadwild  = QuadWild-BiMDF prebuilt binary (GPL3) github.com/cgg-bern/quadwild-bimdf
+#   _neurcross = NeurCross repo (AGPL3) github.com/QiujieDong/NeurCross
+#   _libqex / _openmesh* = local C++ builds for the libQEx path (unused at runtime)
+_quadwild/
+_neurcross/
+_libqex/
+_openmesh*/
+
 # IDE / editor
 .vscode/
 .idea/

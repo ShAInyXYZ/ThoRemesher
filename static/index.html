@@ -39,6 +39,7 @@
     </div>
     <div class="tb-actions">
       <button id="btn-curv" class="toggle" title="Toggle curvature heatmap">Curvature</button>
+      <button id="btn-features" class="toggle" title="Show what the algorithm perceives: sharp edges, regions, flow">Features</button>
       <button id="btn-wire" class="toggle" title="Toggle wireframe">Wireframe</button>
       <button id="btn-sync" class="toggle on" title="Link the two cameras">Link Cameras</button>
     </div>
@@ -54,6 +55,49 @@
         </div>
       </div>
 
+      <div class="mode-row">
+        <button type="button" id="mode-tris" class="seg-btn active">TRIS</button>
+        <button type="button" id="mode-quad" class="seg-btn">QUAD</button>
+      </div>
+
+      <!-- QUAD mode -->
+      <div id="quad-settings" class="hidden">
+        <h3>Quad Remesh</h3>
+        <small class="panel-sub">pure-quad</small>
+        <div class="field">
+          <label>Engine</label>
+          <select id="quad_engine" class="preset-select">
+            <option value="quadwild" selected>QuadWild-BiMDF (fast)</option>
+            <option value="neurcross">NeurCross (neural · slow, GPU)</option>
+          </select>
+          <small>QuadWild: fast (~2.5s). NeurCross: neural field, organic shapes, minutes/mesh.</small>
+        </div>
+        <div class="field">
+          <label>Target quads <input type="number" id="quad_target_num" class="num-input" min="50" step="100" value="2500" /></label>
+          <input type="range" id="quad_target" min="2500" max="100000" step="2500" value="2500" />
+          <small>Drag, or type an exact count (any value).</small>
+        </div>
+        <div class="field">
+          <label>Sharp edges</label>
+          <select id="quad_sharp_mode" class="preset-select">
+            <option value="auto" selected>Auto (detect)</option>
+            <option value="hard">Hard surface (keep edges)</option>
+            <option value="smooth">Smooth / organic</option>
+          </select>
+          <small>Whether to preserve sharp creases as edge loops.</small>
+        </div>
+        <div class="field">
+          <label>Sharp angle <b id="v-qsharp">35°</b></label>
+          <input type="range" id="quad_sharp_angle" min="10" max="90" step="1" value="35" />
+          <small>Dihedral angle above which an edge counts as sharp.</small>
+        </div>
+        <div class="checks">
+          <label><input type="checkbox" id="quad_colorize" checked /> Colorize by curvature</label>
+        </div>
+      </div>
+
+      <!-- TRIS mode -->
+      <div id="tris-settings">
       <h3>Remesh settings</h3>
 
       <div class="field">
@@ -97,23 +141,69 @@
         <label><input type="checkbox" id="colorize" checked /> Colorize by curvature</label>
         <label><input type="checkbox" id="preserve_boundary" checked /> Preserve boundary</label>
       </div>
+      </div><!-- /tris-settings -->
 
       <div class="btn-row">
         <button id="btn-remesh" class="primary" disabled>Remesh</button>
-        <button id="btn-export" class="secondary" disabled title="Export remeshed mesh">Export</button>
       </div>
-      <div class="export-menu hidden" id="export-menu">
-        <button data-fmt="glb">GLB</button>
-        <button data-fmt="obj">OBJ</button>
-        <button data-fmt="ply">PLY</button>
-        <button data-fmt="stl">STL</button>
+      <!-- POSTPROCESS — runs on the remeshed result, on demand -->
+      <div class="section" id="postprocess" hidden>
+        <div class="section-title">POSTPROCESS</div>
+        <div class="field">
+          <label><input type="checkbox" id="sw_enable" /> Shrinkwrap onto original</label>
+          <small>Shows the original as a ghost; wraps the remesh onto it.</small>
+        </div>
+        <div id="sw_controls" hidden>
+          <div class="field">
+            <label>Type</label>
+            <select id="sw_mode" class="preset-select">
+              <option value="nearest">Nearest surface</option>
+              <option value="project">Project (along normals)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Max distance <b id="v-swdist">∞</b></label>
+            <input type="range" id="sw_distance" min="0" max="100" step="1" value="0" />
+            <small>0 = unlimited. Verts farther than this stay put.</small>
+          </div>
+          <div class="field">
+            <label>Offset (inflation) <b id="v-swoff">0%</b></label>
+            <input type="range" id="sw_offset" min="0" max="5" step="0.1" value="0" />
+            <small>Size of the wrap above the surface (0 = on surface, 5% max).</small>
+          </div>
+          <div class="btn-row">
+            <button id="sw_wrap" class="primary">Wrap</button>
+            <button id="sw_reset" class="secondary">Reset</button>
+          </div>
+        </div>
       </div>
+
       <button id="btn-open" class="ghost">Open another file…</button>
       <input type="file" id="file-input" accept=".fbx,.glb,.gltf,.obj,.ply,.stl" hidden />
+
+      <div class="demo-row">
+        <label class="demo-label">Load demo</label>
+        <select id="demo-select" class="preset-select">
+          <option value="">— choose a demo mesh —</option>
+        </select>
+      </div>
 
       <div class="legend">
         <div class="legend-bar"></div>
         <div class="legend-labels"><span>flat</span><span>detailed</span></div>
+      </div>
+
+      <!-- EXPORT — at the bottom of the panel -->
+      <div class="section" id="export-section">
+        <div class="section-title">EXPORT</div>
+        <button id="btn-export" class="primary" disabled title="Export remeshed mesh">Export remeshed</button>
+        <div class="export-menu hidden" id="export-menu">
+          <button data-fmt="obj" title="Keeps quad faces">OBJ · quads</button>
+          <button data-fmt="glb" title="Triangulated (format is tri-only)">GLB</button>
+          <button data-fmt="ply" title="Triangulated">PLY</button>
+          <button data-fmt="stl" title="Triangulated">STL</button>
+        </div>
+        <small class="muted-note">OBJ keeps quads. GLB/PLY/STL are triangle-only formats.</small>
       </div>
     </aside>
 

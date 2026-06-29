@@ -1,10 +1,22 @@
+# Core
 numpy>=1.26
 scipy>=1.11
 trimesh>=4.0
-pymeshlab>=2024
-pyassimp>=5.2
-pyvista>=0.43
+networkx>=3.0
+
+# Mesh I/O + processing
+pymeshlab>=2024          # FBX/GLB/OBJ/PLY/STL I/O, decimation, quad-OBJ export, cleanup
+pyassimp>=5.2            # robust FBX reading (needs system libassimp)
+libigl>=2.5              # principal-curvature classification
+robust-laplacian>=0.2    # robust mean curvature for the heatmap (Sharp & Crane 2020)
+
+# Server
 fastapi>=0.110
 uvicorn[standard]>=0.27
 python-multipart>=0.0.9
 rtree>=1.1
+
+# Optional — only for the NeurCross neural engine (needs a CUDA GPU).
+# The NeurCross repo (vendored in _neurcross/, gitignored) brings its own deps;
+# torch is the one you need preinstalled, e.g.:
+# torch>=2.0  (CUDA build)

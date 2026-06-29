@@ -40,6 +40,11 @@ else:
     _PML_ERR = None
 
 try:
+    import igl
+except Exception:  # pragma: no cover
+    igl = None
+
+try:
     import pyassimp
 except Exception:  # pragma: no cover
     pyassimp = None
@@ -106,51 +111,36 @@ def load_mesh(path):
 # --------------------------------------------------------------------------- #
 #  Curvature / detail metric
 # --------------------------------------------------------------------------- #
-def _normal_spread(mesh):
-    fn = mesh.face_normals.copy()
-    norms = np.linalg.norm(fn, axis=1, keepdims=True)
-    norms[norms == 0] = 1.0
-    fn = fn / norms
-    f = mesh.faces
-    v = len(mesh.vertices)
-    rows = f.ravel()
-    cols = np.repeat(np.arange(f.shape[0]), 3)
-    p = sp.coo_matrix(
-        (np.ones(f.size, dtype=np.float64), (rows, cols)), shape=(v, f.shape[0])
-    ).tocsr()
-    summed = p @ fn
-    count = np.asarray(p.sum(axis=1)).ravel()
-    count[count == 0] = 1.0
-    return 1.0 - np.linalg.norm(summed, axis=1) / count
+def _robust_mean_curvature(vertices, faces):
+    """Per-vertex mean curvature in [0,1] via the MODERN robust cotan Laplacian
+    (robust-laplacian, Sharp & Crane 2020). H ~ |L·V| / 2A — the Laplacian applied
+    to positions is the mean-curvature normal; the robust (tufted) operator stays
+    stable on coarse/noisy/non-manifold meshes where igl's discrete curvature
+    speckles. Robustly normalized (95th pct + sqrt) for a clean gradient."""
+    V = np.ascontiguousarray(vertices, np.float64)
+    F = np.ascontiguousarray(faces, np.int64)
+    n = len(V)
+    try:
+        import robust_laplacian as rl
 
-
-def _robust01(x, p_hi=98.0):
-    """Normalize to [0,1] using a high percentile as the scale.
-
-    Outliers (degenerate vertices hitting pi, etc.) are clipped, so the useful
-    smooth-curvature signal is not compressed to near-zero.
-    """
-    x = np.nan_to_num(np.asarray(x, dtype=np.float64), nan=0.0, posinf=0.0, neginf=0.0)
-    pos = x[x > 0]
-    hi = np.percentile(pos, p_hi) if pos.size else 1.0
-    hi = hi if hi > 1e-12 else 1.0
-    return np.clip(x / hi, 0.0, 1.0)
-
-
-def _proxy_for_curvature(vertices, faces, max_faces=12000):
-    """Return a coarse proxy mesh for curvature estimation (preserves shape)."""
-    if len(faces) <= max_faces:
-        return vertices, faces
-    ratio = max_faces / max(len(faces), 1)
-    if pymeshlab is not None:
+        L, M = rl.mesh_laplacian(V, F)
+        Hn = L @ V                              # mean-curvature normal (weak form)
+        area = np.asarray(M.diagonal()).ravel()
+        H = np.linalg.norm(Hn, axis=1) / (2.0 * np.maximum(area, 1e-12))
+        H = np.nan_to_num(H, nan=0.0, posinf=0.0, neginf=0.0)
+        pos = H[H > 1e-9]
+        hi = np.percentile(pos, 95) if len(pos) else 1.0
+        hi = hi if hi > 1e-12 else 1.0
+        return np.clip((H / hi) ** 0.5, 0.0, 1.0)
+    except Exception:  # noqa: BLE001
+        # fallback: igl gaussian curvature (noisier, but always available)
         try:
-            return quadric_decimate(
-                vertices, faces, np.ones(len(vertices), dtype=np.float64),
-                target_perc=max(ratio, 0.05), preserve_boundary=True,
-            )
+            K = np.abs(np.asarray(igl.gaussian_curvature(V, F)).ravel())
+            K = np.nan_to_num(K)
+            hi = np.percentile(K[K > 1e-9], 95) if np.any(K > 1e-9) else 1.0
+            return np.clip((K / max(hi, 1e-12)) ** 0.5, 0.0, 1.0)
         except Exception:  # noqa: BLE001
-            pass
-    return vertices, faces
+            return np.zeros(n)
 
 
 def detail_score(vertices, faces):
@@ -159,13 +149,10 @@ def detail_score(vertices, faces):
     Implements the requested logic: a region is "detailed" where the surface
     changes direction (curved) and "flat" where adjacent face normals agree.
 
-    Uses VTK's discrete curvature (via pyvista) — true differential-geometry
-    mean curvature. It is both fast (~0.01s even on large meshes) and accurate,
-    catching smooth curvature (fingers, limbs, cylinders) that simple normal
-    variation misses. Values are log-compressed and clipped at a robust
-    percentile so outliers don't compress the useful signal.
-
-    Flat areas -> ~0, detailed areas -> high.
+    Detail = max(crease, curvature): a per-edge dihedral-angle crease term
+    (trimesh.face_adjacency_angles, catches hard edges with zero speckle) maxed
+    with the robust mean curvature (_robust_mean_curvature; catches smooth
+    curvature like fingers/limbs/cylinders). Flat -> ~0, detailed -> high.
     """
     vertices = np.asarray(vertices, dtype=np.float64)
     faces = np.asarray(faces, dtype=np.int64)
@@ -173,38 +160,31 @@ def detail_score(vertices, faces):
     if n == 0:
         return np.zeros(0)
 
+    # Detail = max( sharp-crease, smooth-curvature ), using MODERN ROBUST
+    # operators (robust-laplacian, Sharp & Crane SGP 2020) — NOT igl's discrete
+    # Gaussian/mean curvature, which is speckled (salt-and-pepper) on dense/noisy
+    # real meshes. Two terms:
+    #   * dihedral-angle crease term  -> catches hard edges cleanly, zero speckle.
+    #   * ROBUST mean curvature       -> |L V| / 2A from the robust cotan Laplacian
+    #     L and mass matrix A; a clean, smooth gradient even on coarse/noisy meshes.
     try:
-        import pyvista as pv
-
-        cells = np.column_stack([np.full(len(faces), 3), faces])
-        mesh = pv.PolyData(vertices, cells)
-        curv = np.abs(np.asarray(mesh.curvature(curv_type="mean"), dtype=np.float64))
-        curv = np.nan_to_num(curv, nan=0.0, posinf=0.0, neginf=0.0)
-
-        # power-law normalization: spreads the wide dynamic range into [0,1]
-        # with good separation between flat and detailed regions.
-        hi = np.percentile(curv[curv > 0], 95) if np.any(curv > 0) else 1.0
-        hi = hi if hi > 1e-12 else 1.0
-        return np.clip((curv / hi) ** 0.3, 0.0, 1.0)
-    except Exception:  # noqa: BLE001
-        # fallback: integral mean curvature on a proxy
-        Vp, Fp = _proxy_for_curvature(vertices, faces, max_faces=9000)
-        mp = trimesh.Trimesh(vertices=Vp, faces=Fp, process=False)
-        avg_edge = _avg_edge(Vp, Fp)
+        mesh = trimesh.Trimesh(vertices, faces, process=False)
+        # --- crease term: per-edge dihedral angle, maxed onto incident verts ---
+        crease = np.zeros(n)
         try:
-            mean_curv = np.abs(
-                trimesh.curvature.discrete_mean_curvature_measure(
-                    mp, Vp, max(avg_edge * 3.0, 1e-6)
-                )
-            )
+            ang = mesh.face_adjacency_angles                 # radians, >=0
+            ed = mesh.face_adjacency_edges
+            cval = ang / np.radians(70.0)                    # 70deg crease -> 1.0
+            np.maximum.at(crease, ed[:, 0], cval)
+            np.maximum.at(crease, ed[:, 1], cval)
+            crease = np.clip(crease, 0.0, 1.0)
         except Exception:  # noqa: BLE001
-            mean_curv = np.zeros(len(Vp))
-        score = _robust01(mean_curv)
-        if len(Vp) != n:
-            tree = ssp.cKDTree(Vp)
-            _, idx = tree.query(vertices, k=1, workers=-1)
-            score = score[idx]
-        return np.clip(score, 0.0, 1.0)
+            crease = np.zeros(n)
+        # --- smooth term: robust mean curvature ---
+        smooth = _robust_mean_curvature(vertices, faces)
+        return np.clip(np.maximum(crease, smooth), 0.0, 1.0)
+    except Exception:  # noqa: BLE001
+        return np.zeros(n)
 
 
 # --------------------------------------------------------------------------- #
@@ -327,19 +307,6 @@ def _stats(v, f):
     return int(len(v)), int(len(f))
 
 
-def _avg_edge(vertices, faces):
-    mesh = trimesh.Trimesh(vertices=vertices, faces=faces, process=False)
-    if not len(mesh.edges):
-        return 1.0
-    return float(
-        np.mean(
-            np.linalg.norm(
-                vertices[mesh.edges[:, 0]] - vertices[mesh.edges[:, 1]], axis=1
-            )
-        )
-    )
-
-
 def _feature_edges(vertices, faces, angle_deg):
     """Edges whose adjacent faces form a dihedral angle above the threshold."""
     mesh = trimesh.Trimesh(vertices=vertices, faces=faces, process=True)
@@ -425,11 +392,7 @@ def run_pipeline(vertices, faces, params: PipelineParams) -> PipelineResult:
             cur_v, cur_f, [1.0] * len(cur_v), feature_edges=feats,
             reproject=_make_reproject(vertices, faces) if len(cur_f) <= 40000 else None,
         )
-        rm.F = np.asarray(cur_f, dtype=np.int64)
-        for _ in range(min(params.iterations, 6)):
-            rm._smooth()
-        cur_v = np.asarray(rm.V, dtype=np.float64)
-        cur_f = np.asarray(rm.F, dtype=np.int64)
+        cur_v, cur_f = rm.smooth(min(params.iterations, 6))
 
     # topology cleanup: repair non-manifold edges/vertices, duplicates, T-verts
     if pymeshlab is not None and len(cur_f) > 0:
@@ -458,6 +421,211 @@ def run_pipeline(vertices, faces, params: PipelineParams) -> PipelineResult:
 # --------------------------------------------------------------------------- #
 #  GLB serialization (for the web viewer)
 # --------------------------------------------------------------------------- #
+def triangulate_quads(quads, tris=None):
+    """Merge quad + tri faces into one triangle array (for the viewer/export)."""
+    parts = []
+    q = np.asarray(quads, np.int64).reshape(-1, 4)
+    if len(q):
+        parts.append(q[:, [0, 1, 2]])
+        parts.append(q[:, [0, 2, 3]])
+    if tris is not None and len(tris):
+        parts.append(np.asarray(tris, np.int64).reshape(-1, 3))
+    return np.vstack(parts) if parts else np.zeros((0, 3), np.int64)
+
+
+def _needs_smoothing(V, F):
+    """True only if the mesh looks NOISY (high-frequency normal scatter), not just
+    curved. A clean primitive (cube, sphere, scan-free model) is left untouched so
+    its sharp edges and flat faces survive. Heuristic: compare each face normal to
+    its neighbours; lots of small-scale disagreement = noise worth smoothing, a
+    few big jumps (real creases) + smooth elsewhere = clean, skip it."""
+    try:
+        m = trimesh.Trimesh(np.asarray(V, np.float64), np.asarray(F, np.int64),
+                            process=False)
+        ang = m.face_adjacency_angles
+        if not len(ang):
+            return False
+        # noise = many medium-angle disagreements (15-45deg). Real geometry has
+        # either near-flat (<10deg) or sharp creases (>50deg), not a sea of 20-40deg.
+        noisy_frac = np.mean((ang > np.radians(15)) & (ang < np.radians(50)))
+        return noisy_frac > 0.25
+    except Exception:  # noqa: BLE001
+        return True
+
+
+def preprocess_for_quad(vertices, faces, work_faces=6000, smooth=4,
+                        repair=True):
+    """Clean a raw/messy input mesh into a quad-friendly base before remeshing.
+
+    Repair (merge shells, fix non-manifold) -> decimate to ~work_faces ->
+    Laplacian smooth to remove micro-noise/speckle so the patch segmentation
+    finds real surface regions instead of thousands of tiny noise patches.
+    Returns (V, F).
+    """
+    V = np.asarray(vertices, np.float64)
+    F = np.asarray(faces, np.int64)
+    if pymeshlab is None:
+        return V, F
+    ms = pymeshlab.MeshSet()
+    ms.add_mesh(pymeshlab.Mesh(vertex_matrix=V, face_matrix=F.astype(np.int32)), "m")
+    ms.meshing_remove_duplicate_vertices()
+    ms.meshing_remove_duplicate_faces()
+    ms.meshing_remove_unreferenced_vertices()
+    if repair:
+        try:
+            ms.meshing_merge_close_vertices()
+        except Exception:  # noqa: BLE001
+            pass
+        ms.meshing_repair_non_manifold_edges()
+        ms.meshing_repair_non_manifold_vertices()
+    if len(F) > work_faces:
+        ms.meshing_decimation_quadric_edge_collapse(
+            targetfacenum=int(work_faces), preservetopology=False,
+            planarquadric=True, autoclean=True,
+        )
+    # FEATURE-PRESERVING smoothing. Plain Laplacian rounds off sharp edges (a
+    # cube's 90deg creases collapse to ~57deg, destroying the very features the
+    # remesher must keep). Only smooth when the mesh is actually NOISY, and use a
+    # crease-aware method that leaves sharp edges intact.
+    if smooth > 0 and _needs_smoothing(V, F):
+        try:
+            # Taubin lambda/mu smoothing barely shrinks and preserves features
+            # far better than Laplacian; selection-aware so creases stay sharp.
+            ms.apply_coord_taubin_smoothing(stepsmoothnum=int(smooth),
+                                            lambda_=0.5, mu=-0.53)
+        except Exception:  # noqa: BLE001
+            try:
+                ms.apply_coord_laplacian_smoothing(
+                    stepsmoothnum=int(smooth), cotangentweight=False)
+            except Exception:  # noqa: BLE001
+                pass
+    ms.meshing_repair_non_manifold_edges()
+    m = ms.current_mesh()
+    return np.asarray(m.vertex_matrix(), np.float64), \
+        np.asarray(m.face_matrix(), np.int64)
+
+
+def humanlogic_quad(vertices, faces, target=2000, feature_angle=35.0,
+                    feature_weight=8.0, ridge_weight=3.0, field_iters=70,
+                    work_faces=6000, preprocess=True, pre_smooth=4):
+    """HumanLogic perceptual quad remesh (humanlogic.py).
+
+    When `preprocess`, the raw mesh is first repaired + decimated + smoothed
+    (preprocess_for_quad) so the patch segmentation sees clean regions, not
+    scan noise. Returns (V, quads Nx4, tris Nx3).
+    """
+    import humanlogic as hl
+
+    V = np.asarray(vertices, np.float64)
+    F = np.asarray(faces, np.int64)
+    if preprocess:
+        V, F = preprocess_for_quad(V, F, work_faces=work_faces, smooth=pre_smooth)
+    elif len(F) > work_faces and pymeshlab is not None:
+        V, F = quadric_decimate(
+            V, F, quality=np.ones(len(V)),
+            target_perc=max(work_faces / len(F), 0.01), preserve_boundary=True,
+        )
+    return hl.humanlogic_remesh(
+        V, F, target_quads=target, feature_angle=feature_angle,
+        feature_weight=feature_weight, ridge_weight=ridge_weight,
+        field_iters=field_iters,
+    )
+
+
+def shrinkwrap_quad(vertices, faces, target=2000, work_faces=6000,
+                    preprocess=True, pre_smooth=4):
+    """6-cage-face shrinkwrap quad remesh (shrinkwrap.py) — clean axis-aligned
+    box/loop flow for closed shapes. Returns (V, quads Nx4, tris Nx3=empty)."""
+    import shrinkwrap as sw
+
+    V = np.asarray(vertices, np.float64)
+    F = np.asarray(faces, np.int64)
+    if preprocess:
+        V, F = preprocess_for_quad(V, F, work_faces=work_faces, smooth=pre_smooth)
+    P, Q = sw.shrinkwrap_remesh(V, F, target_quads=target)
+    return P, Q, np.zeros((0, 3), np.int64)
+
+
+def visibility_shell_quad(vertices, faces, target=2000, work_faces=6000,
+                          preprocess=True, pre_smooth=4):
+    """Visibility-shell shrinkwrap (visibility_shells.py) — full Phase I-IV:
+    cuts self-occluding shapes (torus) into shells, projects each, welds.
+    Returns (V, quads Nx4, tris=empty)."""
+    import visibility_shells as vis
+
+    V = np.asarray(vertices, np.float64)
+    F = np.asarray(faces, np.int64)
+    if preprocess:
+        V, F = preprocess_for_quad(V, F, work_faces=work_faces, smooth=pre_smooth)
+    P, Q, T = vis.remesh(V, F, target_quads=target)
+    return P, Q, T
+
+
+def quadwild_quad(vertices, faces, target=2000, work_faces=6000,
+                  preprocess=True, pre_smooth=4, sharp_mode="auto",
+                  sharp_angle=35.0):
+    """MODERN default: QuadWild-BiMDF (quadwild.py) feature-line-driven pure-quad
+    remesh. Returns (V, q, tris). Falls back to the in-house engine on failure.
+
+    target     : approximate quad count -> mapped to QuadWild's scaleFact density.
+    sharp_mode : "auto" (detect creases) | "hard" (always preserve sharp edges) |
+                 "smooth" (organic, ignore creases).
+    sharp_angle: dihedral angle (deg) that counts as a sharp edge.
+    """
+    import quadwild as qw
+
+    V = np.asarray(vertices, np.float64)
+    F = np.asarray(faces, np.int64)
+    if preprocess:
+        V, F = preprocess_for_quad(V, F, work_faces=work_faces, smooth=pre_smooth)
+    if qw.available():
+        if sharp_mode == "hard":
+            sharp = True
+        elif sharp_mode == "smooth":
+            sharp = False
+        else:  # auto
+            try:
+                import visibility_shells as vis
+                sharp = vis._is_creased(trimesh.Trimesh(V, F, process=False),
+                                        sharp_angle)
+            except Exception:  # noqa: BLE001
+                sharp = True
+        # map target quad count -> scaleFact. Empirically scaleFact 1 ~ 4200q on
+        # our test shapes; quads scale ~ 1/scaleFact^2, so sf ~ sqrt(4200/target).
+        scale_fact = float(np.clip(np.sqrt(4200.0 / max(target, 50)), 0.15, 3.0))
+        res = qw.remesh(V, F, sharp=sharp, sharp_thr=sharp_angle,
+                        scale_fact=scale_fact)
+        if res is not None:
+            P, Q, T = res
+            if len(Q):
+                return P, Q, T
+    # fallback: in-house engine (never leave the user without a result)
+    return visibility_shell_quad(vertices, faces, target=target,
+                                 work_faces=work_faces, preprocess=preprocess,
+                                 pre_smooth=pre_smooth)
+
+
+def neurcross_quad(vertices, faces, target=2000, work_faces=6000,
+                   preprocess=True, pre_smooth=4, n_samples=2000):
+    """NeurCross-steered quad remesh (neurcross.py): a NEURAL cross field drives
+    QuadWild's extraction. Best for smooth/organic shapes. SLOW (minutes/mesh, GPU).
+    Falls back to quadwild_quad if NeurCross is unavailable or fails."""
+    import neurcross as nc
+
+    V = np.asarray(vertices, np.float64)
+    F = np.asarray(faces, np.int64)
+    if preprocess:
+        V, F = preprocess_for_quad(V, F, work_faces=work_faces, smooth=pre_smooth)
+    if nc.available():
+        scale_fact = float(np.clip(np.sqrt(4200.0 / max(target, 50)), 0.15, 3.0))
+        res = nc.remesh(V, F, scale_fact=scale_fact, n_samples=n_samples)
+        if res is not None and len(res[1]):
+            return res
+    # fall back to vanilla QuadWild (never leave the user without a result)
+    return quadwild_quad(vertices, faces, target=target, work_faces=work_faces,
+                         preprocess=preprocess, pre_smooth=pre_smooth)
+
+
 def to_glb_bytes(vertices, faces, colors=None):
     import io
 
@@ -476,22 +644,46 @@ def to_glb_bytes(vertices, faces, colors=None):
     return buf.getvalue()
 
 
-def export_mesh(vertices, faces, fmt):
-    """Export a mesh as bytes. Returns (data, media_type, suffix)."""
+_MEDIA = {
+    "glb": "model/gltf-binary", "obj": "text/plain", "ply": "application/ply",
+    "stl": "model/stl",
+}
+
+
+def export_mesh(vertices, faces, fmt, quads=None):
+    """Export a mesh as bytes. Returns (data, media_type, suffix).
+
+    If `quads` (Q,4) is given and fmt is OBJ, the real 4-sided faces are written
+    (via pymeshlab) so the quad topology survives. GLB/PLY/STL are triangle-only
+    formats and always get the triangulated `faces` — a format limitation, not a
+    bug; use OBJ to keep quads."""
     import io
 
-    mesh = trimesh.Trimesh(
-        vertices=np.asarray(vertices, dtype=np.float64),
-        faces=np.asarray(faces, dtype=np.int64),
-        process=True,
-    )
     fmt = fmt.lower()
-    media = {
-        "glb": "model/gltf-binary",
-        "obj": "text/plain",
-        "ply": "application/ply",
-        "stl": "model/stl",
-    }.get(fmt, "application/octet-stream")
+    V = np.asarray(vertices, dtype=np.float64)
+
+    if fmt == "obj" and quads is not None and len(quads) and pymeshlab is not None:
+        return _export_quads_obj(V, np.asarray(quads, np.int64))
+
+    mesh = trimesh.Trimesh(vertices=V, faces=np.asarray(faces, np.int64), process=True)
     buf = io.BytesIO()
     mesh.export(buf, file_type=fmt)
-    return buf.getvalue(), media, fmt
+    return buf.getvalue(), _MEDIA.get(fmt, "application/octet-stream"), fmt
+
+
+def _export_quads_obj(V, quads):
+    """Write V + quad faces to an OBJ via pymeshlab (preserves 4-sided faces)."""
+    import os
+    import tempfile
+
+    ms = pymeshlab.MeshSet()
+    ms.add_mesh(pymeshlab.Mesh(V, face_list_of_indices=[list(map(int, q)) for q in quads]))
+    d = tempfile.mkdtemp(prefix="exp_")
+    try:
+        path = os.path.join(d, "mesh.obj")
+        ms.save_current_mesh(path)
+        with open(path, "rb") as fh:
+            return fh.read(), _MEDIA["obj"], "obj"
+    finally:
+        import shutil
+        shutil.rmtree(d, ignore_errors=True)
