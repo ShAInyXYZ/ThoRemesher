@@ -15,8 +15,16 @@ fastapi>=0.110
 uvicorn[standard]>=0.27
 python-multipart>=0.0.9
 rtree>=1.1
+embreex>=2.17          # fast ray backend for shrinkwrap "project" mode (optional but strongly recommended)
 
 # Optional — only for the NeurCross neural engine (needs a CUDA GPU).
 # The NeurCross repo (vendored in _neurcross/, gitignored) brings its own deps;
 # torch is the one you need preinstalled, e.g.:
 # torch>=2.0  (CUDA build)
+
+# Optional — only to BUILD the AutoRemesher adaptive-quad engine (not a runtime
+# dep; the compiled .so is prebuilt by ./_autoremesher/build.sh). System deps:
+#   sudo apt install cmake libtbb-dev
+# then:
+#   python3 -m pip install pybind11
+# Geogram/Eigen/isotropic-remesher are vendored under _autoremesher/upstream/.

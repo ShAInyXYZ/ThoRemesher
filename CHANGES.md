@@ -5,6 +5,15 @@ committing if you don't want it in history — it's a handoff note, not docs.
 
 ## New features
 
+- **AutoRemesher adaptive-quad engine** (optional, MIT) — a fourth QUAD engine built on
+  Geogram's `FrameField` + `GlobalParam2d::quad_cover` (the QuadCover lineage). Unlike
+  QuadWild's field-tracing + single global `scaleFact`, it computes a per-face curvature
+  scaling field and bakes it into a global integer-grid UV, so quad **density follows
+  curvature** — small/detailed regions get dense quads, large/flat regions get relaxed
+  quads. Exposed as the **AutoRemesher** engine option + a **Density adaptivity** slider
+  (0 = uniform, 1 = fully adaptive). Built in-process as a pybind11 extension (no
+  subprocess/segfault dance); `autoremesher.py` wrapper, `_autoremesher/` build infra.
+  Falls back to QuadWild if not built.
 - **Pure-quad remeshing (QUAD mode)** via **QuadWild-BiMDF** — now the default quad
   engine. 100% quad, watertight, feature-aligned. Segfault-tolerant wrapper (judges
   success by output file, not exit code).

@@ -15,13 +15,18 @@ _tmp/
 ThoRemesher/_tmp/
 
 # Vendored third-party engines (download/build separately — not our code):
-#   _quadwild  = QuadWild-BiMDF prebuilt binary (GPL3) github.com/cgg-bern/quadwild-bimdf
-#   _neurcross = NeurCross repo (AGPL3) github.com/QiujieDong/NeurCross
+#   _quadwild     = QuadWild-BiMDF prebuilt binary (GPL3) github.com/cgg-bern/quadwild-bimdf
+#   _neurcross    = NeurCross repo (AGPL3) github.com/QiujieDong/NeurCross
+#   _autoremesher = AutoRemesher source + pybind11 build (MIT) github.com/huxingyi/autoremesher
 #   _libqex / _openmesh* = local C++ builds for the libQEx path (unused at runtime)
 _quadwild/
 _neurcross/
+_autoremesher/
 _libqex/
 _openmesh*/
+
+# Built pybind11 extension (from _autoremesher/ — produced by build.sh)
+autoremesher_ext*.so
 
 # IDE / editor
 .vscode/

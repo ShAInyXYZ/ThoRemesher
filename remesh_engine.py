@@ -626,6 +626,40 @@ def neurcross_quad(vertices, faces, target=2000, work_faces=6000,
                          preprocess=preprocess, pre_smooth=pre_smooth)
 
 
+def autoremesher_quad(vertices, faces, target=2000, work_faces=6000,
+                      preprocess=True, pre_smooth=4, adaptivity=0.7,
+                      sharp_mode="auto", sharp_angle=35.0):
+    """AutoRemesher (Geogram QuadCover) — curvature-ADAPTIVE pure-quad remesh.
+
+    The payoff vs QuadWild: quad DENSITY follows curvature. Small/detailed
+    regions get dense quads, large/flat regions get relaxed quads — instead of
+    QuadWild's single global scaleFact that leaves small areas detail-starved.
+    In-process pybind11 module (no subprocess/segfault dance), MIT-licensed.
+
+    adaptivity  : 0.0 uniform → 1.0 fully curvature-adaptive (THE knob).
+    sharp_mode  : "auto" | "hard" (keep creases) | "smooth" (organic).
+    sharp_angle : dihedral angle (deg) that counts as a sharp edge.
+
+    Falls back to quadwild_quad on unavailability/failure (same chain as
+    neurcross_quad)."""
+    import autoremesher as ar
+
+    V = np.asarray(vertices, np.float64)
+    F = np.asarray(faces, np.int64)
+    if preprocess:
+        V, F = preprocess_for_quad(V, F, work_faces=work_faces, smooth=pre_smooth)
+    if ar.available():
+        sharp = sharp_mode != "smooth"  # "auto"/"hard" preserve edges; "smooth" = organic
+        res = ar.remesh(V, F, target_quad=target, adaptivity=adaptivity,
+                        sharp=sharp, sharp_thr=sharp_angle)
+        if res is not None and len(res[1]):
+            return res
+    # fall back to QuadWild (never leave the user without a result)
+    return quadwild_quad(vertices, faces, target=target, work_faces=work_faces,
+                         preprocess=preprocess, pre_smooth=pre_smooth,
+                         sharp_mode=sharp_mode, sharp_angle=sharp_angle)
+
+
 def to_glb_bytes(vertices, faces, colors=None):
     import io
 
@@ -650,20 +684,24 @@ _MEDIA = {
 }
 
 
-def export_mesh(vertices, faces, fmt, quads=None):
+def export_mesh(vertices, faces, fmt, quads=None, qtris=None):
     """Export a mesh as bytes. Returns (data, media_type, suffix).
 
     If `quads` (Q,4) is given and fmt is OBJ, the real 4-sided faces are written
-    (via pymeshlab) so the quad topology survives. GLB/PLY/STL are triangle-only
-    formats and always get the triangulated `faces` — a format limitation, not a
-    bug; use OBJ to keep quads."""
+    (via pymeshlab) so the quad topology survives — together with any leftover
+    triangles `qtris` (T,3), or the export would have holes where the engine
+    couldn't place a quad. GLB/PLY/STL are triangle-only formats and always get
+    the triangulated `faces` — a format limitation, not a bug; use OBJ for quads."""
     import io
 
     fmt = fmt.lower()
     V = np.asarray(vertices, dtype=np.float64)
 
     if fmt == "obj" and quads is not None and len(quads) and pymeshlab is not None:
-        return _export_quads_obj(V, np.asarray(quads, np.int64))
+        polys = [list(map(int, q)) for q in quads]
+        if qtris is not None and len(qtris):
+            polys += [list(map(int, t)) for t in qtris]
+        return _export_polys_obj(V, polys)
 
     mesh = trimesh.Trimesh(vertices=V, faces=np.asarray(faces, np.int64), process=True)
     buf = io.BytesIO()
@@ -671,13 +709,14 @@ def export_mesh(vertices, faces, fmt, quads=None):
     return buf.getvalue(), _MEDIA.get(fmt, "application/octet-stream"), fmt
 
 
-def _export_quads_obj(V, quads):
-    """Write V + quad faces to an OBJ via pymeshlab (preserves 4-sided faces)."""
+def _export_polys_obj(V, polys):
+    """Write V + polygonal faces (quads and/or tris) to an OBJ via pymeshlab.
+    Vertex order is preserved exactly (verified: no welding/reordering)."""
     import os
     import tempfile
 
     ms = pymeshlab.MeshSet()
-    ms.add_mesh(pymeshlab.Mesh(V, face_list_of_indices=[list(map(int, q)) for q in quads]))
+    ms.add_mesh(pymeshlab.Mesh(V, face_list_of_indices=polys))
     d = tempfile.mkdtemp(prefix="exp_")
     try:
         path = os.path.join(d, "mesh.obj")

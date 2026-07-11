@@ -27,6 +27,11 @@ def shrinkwrap(rem_v, rem_f, tgt_v, tgt_f, mode="nearest",
     rem_v = np.asarray(rem_v, np.float64)
     tgt = trimesh.Trimesh(np.asarray(tgt_v, np.float64),
                           np.asarray(tgt_f, np.int64), process=False)
+    if offset:
+        # offset pushes along the target's normals — orient them coherently first
+        # (imported FBX/GLB often has inverted/mixed winding; fix_normals also
+        # corrects global inversion on watertight bodies, so "+" means outward)
+        tgt.fix_normals()
 
     if mode == "project":
         src = trimesh.Trimesh(rem_v, np.asarray(rem_f, np.int64), process=False)
@@ -44,8 +49,19 @@ def shrinkwrap(rem_v, rem_f, tgt_v, tgt_f, mode="nearest",
 
 
 def _nearest_on_surface(tgt, pts):
-    """Closest point on the target surface for each pt + the target's face normal there."""
-    closest, _dist, fid = trimesh.proximity.closest_point(tgt, pts)
+    """Closest point on the target surface for each pt + the target's face normal
+    there. Uses libigl's AABB tree (~100x faster than trimesh.proximity on large
+    targets); falls back to trimesh if igl is unavailable."""
+    try:
+        import igl
+
+        sq_d, fid, closest = igl.point_mesh_squared_distance(
+            np.ascontiguousarray(pts, np.float64),
+            np.ascontiguousarray(tgt.vertices, np.float64),
+            np.ascontiguousarray(tgt.faces, np.int64))
+        fid = np.asarray(fid).ravel()
+    except Exception:  # noqa: BLE001
+        closest, _dist, fid = trimesh.proximity.closest_point(tgt, pts)
     normals = tgt.face_normals[fid]
     return closest, fid, normals
 

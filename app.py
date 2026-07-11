@@ -16,14 +16,14 @@ import tempfile
 import time
 import uuid
 from collections import OrderedDict
-from typing import Any, Dict
+from typing import Any, Dict, Literal
 
 import numpy as np
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import remesh_engine as eng
 
@@ -56,7 +56,7 @@ async def no_cache_html_js(request: Request, call_next):
 # --------------------------------------------------------------------------- #
 class Session:
     __slots__ = ("path", "orig", "proc", "orig_color", "proc_color", "name",
-                 "error", "quads", "proc_prewrap")
+                 "error", "quads", "qtris", "proc_prewrap")
 
     def __init__(self, path, name):
         self.path = path
@@ -65,7 +65,8 @@ class Session:
         self.proc = None        # (V, F)
         self.orig_color = None  # (V,4)
         self.proc_color = None  # (V,4)
-        self.quads = None       # (Q,4) HumanLogic quad faces
+        self.quads = None       # (Q,4) quad faces of the last quad remesh
+        self.qtris = None       # (T,3) leftover non-quad tris of the last quad remesh
         self.proc_prewrap = None  # cached proc verts before shrinkwrap (re-run/reset)
         self.error = None
 
@@ -103,7 +104,8 @@ class RemeshRequest(BaseModel):
     quad_sharp_mode: str = "auto"   # "auto" | "hard" (keep sharp edges) | "smooth"
     quad_sharp_angle: float = 35.0  # dihedral angle that counts as a sharp edge
     quad_work_faces: int = 15000
-    quad_engine: str = "quadwild"   # "quadwild" (default) | "visibility" | "shrinkwrap" | "humanlogic"
+    quad_engine: str = "quadwild"   # "quadwild" | "neurcross" | "autoremesher" | "visibility" | "shrinkwrap" | "humanlogic"
+    quad_adaptivity: float = 0.7    # 0 uniform → 1 fully curvature-adaptive (AutoRemesher only)
     # legacy HumanLogic-only knobs (ignored by quadwild; kept for that engine)
     quad_feature_angle: float = 35.0
     quad_feature_weight: float = 8.0
@@ -112,10 +114,10 @@ class RemeshRequest(BaseModel):
 
 class ShrinkwrapRequest(BaseModel):
     session_id: str
-    mode: str = "nearest"     # "nearest" | "project"
-    distance: float = 0.0     # max search distance, model units (0 = unlimited)
-    offset: float = 0.0       # inflation above the surface, model units
-    reset: bool = False       # restore the pre-shrinkwrap proc and stop
+    mode: Literal["nearest", "project"] = "nearest"
+    distance: float = Field(0.0, ge=0)  # max search distance, model units (0 = unlimited)
+    offset: float = Field(0.0, ge=0)    # inflation above the surface, model units
+    reset: bool = False                 # restore the pre-shrinkwrap proc and stop
 
 
 def _compute_colors(V, F):
@@ -329,46 +331,51 @@ def features(sid: str):
     return JSONResponse(out)
 
 
+# --- wireframe edges: ONE binary format for all three endpoints ------------- #
+# Layout: uint32 nV, uint32 nE, then nV*3 float32 vertices, then nE*2 uint32
+# edge indices. ~10x smaller than the old JSON and no client-side JSON parse —
+# this is what made big-mesh wireframes take seconds to appear.
+def _edges_of(F, width):
+    """Unique undirected edges of an (N, width) face array."""
+    F = np.asarray(F, np.int64).reshape(-1, width)
+    e = np.vstack([F[:, [k, (k + 1) % width]] for k in range(width)])
+    return np.unique(np.sort(e, axis=1), axis=0)
+
+
+def _edge_blob(V, E):
+    header = np.array([len(V), len(E)], np.uint32).tobytes()
+    body = (np.ascontiguousarray(V, np.float32).tobytes()
+            + np.ascontiguousarray(E, np.uint32).tobytes())
+    return Response(content=header + body, media_type="application/octet-stream")
+
+
 @app.get("/api/origedges/{sid}")
 def orig_edges(sid: str):
-    """ALL edges of the INPUT mesh, in the SAME {vertices, edges} format as
-    /api/quadedges — so the input wireframe uses the identical overlay machinery
-    as the remeshed side. The wireframe of the real input topology, full grid."""
+    """ALL edges of the INPUT mesh (left-pane wireframe)."""
     sess = SESSIONS.get(sid)
     if sess is None or sess.orig is None:
         raise HTTPException(status_code=404, detail="unknown session")
     V, F = sess.orig
-    F = np.asarray(F, np.int64).reshape(-1, 3)
-    e = np.vstack([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]])
-    e = np.unique(np.sort(e, axis=1), axis=0)
-    return JSONResponse({"vertices": np.asarray(V).tolist(), "edges": e.tolist()})
+    return _edge_blob(V, _edges_of(F, 3))
 
 
 @app.get("/api/procedges/{sid}")
 def proc_edges(sid: str):
-    """ALL edges of the REMESHED (proc) mesh — used for the right-pane wireframe in
-    TRIS mode (where there are no quads). Same {vertices, edges} format."""
+    """ALL edges of the REMESHED mesh (right-pane wireframe, TRIS mode)."""
     sess = SESSIONS.get(sid)
     if sess is None or sess.proc is None:
         raise HTTPException(status_code=409, detail="not remeshed yet")
     V, F = sess.proc
-    F = np.asarray(F, np.int64).reshape(-1, 3)
-    e = np.vstack([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]])
-    e = np.unique(np.sort(e, axis=1), axis=0)
-    return JSONResponse({"vertices": np.asarray(V).tolist(), "edges": e.tolist()})
+    return _edge_blob(V, _edges_of(F, 3))
 
 
 @app.get("/api/quadedges/{sid}")
 def quad_edges(sid: str):
-    """Return the quad border edges (no triangle diagonals) for a wireframe."""
+    """Quad border edges, no triangle diagonals (right-pane wireframe, QUAD mode)."""
     sess = SESSIONS.get(sid)
     if sess is None or sess.proc is None or sess.quads is None:
         raise HTTPException(status_code=409, detail="no quad mesh")
-    V = sess.proc[0]
-    q = np.asarray(sess.quads, np.int64).reshape(-1, 4)
-    e = np.vstack([q[:, [0, 1]], q[:, [1, 2]], q[:, [2, 3]], q[:, [3, 0]]])
-    e = np.unique(np.sort(e, axis=1), axis=0)
-    return JSONResponse({"vertices": V.tolist(), "edges": e.tolist()})
+    return _edge_blob(sess.proc[0], _edges_of(sess.quads, 4))
 
 
 @app.get("/api/export/{sid}")
@@ -383,9 +390,10 @@ def export(sid: str, which: str = "proc", fmt: str = "glb"):
     fmt = fmt.lower()
     if fmt not in ("glb", "obj", "ply", "stl"):
         raise HTTPException(status_code=400, detail="format must be glb/obj/ply/stl")
-    # pass quads so OBJ keeps real 4-sided faces (proc only; GLB/PLY/STL stay tri)
+    # pass quads (+ leftover tris) so OBJ keeps real 4-sided faces without holes
     quads = sess.quads if which == "proc" else None
-    data, media, suffix = eng.export_mesh(V, F, fmt, quads=quads)
+    qtris = sess.qtris if which == "proc" else None
+    data, media, suffix = eng.export_mesh(V, F, fmt, quads=quads, qtris=qtris)
     base = os.path.splitext(sess.name or "model")[0]
     tag = "remeshed" if which == "proc" else "original"
     fname = f"{base}_{tag}.{suffix}"
@@ -447,6 +455,12 @@ def remesh(req: RemeshRequest):
                 qv, quads, qtris = eng.neurcross_quad(
                     V, F, target=req.quad_target, work_faces=req.quad_work_faces,
                 )
+            elif req.quad_engine == "autoremesher":
+                qv, quads, qtris = eng.autoremesher_quad(
+                    V, F, target=req.quad_target, work_faces=req.quad_work_faces,
+                    adaptivity=req.quad_adaptivity,
+                    sharp_mode=req.quad_sharp_mode, sharp_angle=req.quad_sharp_angle,
+                )
             elif req.quad_engine == "quadwild":
                 qv, quads, qtris = eng.quadwild_quad(
                     V, F, target=req.quad_target, work_faces=req.quad_work_faces,
@@ -474,6 +488,7 @@ def remesh(req: RemeshRequest):
         sess.proc = (qv, tri)
         sess.proc_color = _compute_colors(qv, tri) if req.colorize else None
         sess.quads = quads
+        sess.qtris = qtris         # leftover raw tris — quad OBJ export must include them
         sess.proc_prewrap = None   # a fresh remesh invalidates any prior shrinkwrap
         n_quads, n_tris = len(quads), len(qtris)
         proc_faces = n_quads + n_tris
@@ -507,6 +522,9 @@ def remesh(req: RemeshRequest):
 
     sess.proc = (result.vertices, result.faces)
     sess.proc_color = result.colors if req.colorize else None
+    sess.quads = None           # tri result: stale quad indices would corrupt export/quadedges
+    sess.qtris = None
+    sess.proc_prewrap = None    # and a stale shrinkwrap cache would wrap old verts onto new faces
     s = result.stats
     return {
         "session_id": req.session_id,

@@ -43,6 +43,25 @@ MSG
 fi
 
 echo ""
+AR_EXT="autoremesher_ext"
+if python3 -c "import $AR_EXT" 2>/dev/null; then
+  echo ">> AutoRemesher (adaptive quad engine) ...... present"
+else
+  cat <<'MSG'
+>> AutoRemesher (adaptive quad engine) ...... not built
+   Curvature-ADAPTIVE pure-quad remeshing (Geogram QuadCover, MIT). Adds the
+   "AutoRemesher" engine + a Density-adaptivity slider (dense where it curves).
+   Builds from source into an in-process pybind11 extension. Build deps:
+     sudo apt install cmake libtbb-dev
+     python3 -m pip install pybind11
+   Then:
+     ./_autoremesher/clone_source.sh
+     ./_autoremesher/build.sh
+   Without it, the AutoRemesher engine option falls back to QuadWild.
+MSG
+fi
+
+echo ""
 if [ "$ok" = "1" ]; then
   echo ">> Ready. Run ./run.sh and open http://127.0.0.1:8000"
 else

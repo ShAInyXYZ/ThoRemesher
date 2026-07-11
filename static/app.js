@@ -14,6 +14,7 @@ const state = {
   sync: true,
   syncing: false,
   mode: "tris",
+  procIsQuad: false,  // whether the current proc mesh is a quad result (set at remesh)
 };
 
 const loader = new GLTFLoader();
@@ -22,26 +23,26 @@ const loader = new GLTFLoader();
 //  Viewer (one per side)
 // --------------------------------------------------------------------------- //
 function createViewer(canvas) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, preserveDrawingBuffer: true });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0a0d12);
+  scene.background = new THREE.Color(0x0a0a0b);
 
   const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 1e5);
   camera.position.set(3, 2, 5);
 
-  const grid = new THREE.GridHelper(20, 40, 0x223040, 0x182230);
+  const grid = new THREE.GridHelper(20, 40, 0x2a2a2e, 0x1c1c1f);
   grid.material.transparent = true;
   grid.material.opacity = 0.5;
   scene.add(grid);
 
-  scene.add(new THREE.HemisphereLight(0xbfd8ff, 0x202830, 1.0));
+  scene.add(new THREE.HemisphereLight(0xe8e8e4, 0x232322, 1.0));
   const key = new THREE.DirectionalLight(0xffffff, 1.6);
   key.position.set(5, 8, 6);
   scene.add(key);
-  const fill = new THREE.DirectionalLight(0x88aaff, 0.6);
+  const fill = new THREE.DirectionalLight(0x9a9e90, 0.6);
   fill.position.set(-6, 3, -4);
   scene.add(fill);
 
@@ -52,7 +53,7 @@ function createViewer(canvas) {
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
 
-  return { canvas, renderer, scene, camera, controls, holder, meshes: [] };
+  return { canvas, renderer, scene, camera, controls, holder, meshes: [], gen: 0 };
 }
 
 const left = createViewer(document.getElementById("canvas-left"));
@@ -126,16 +127,12 @@ function clearHolder(v) {
 }
 
 function applyMaterials(v) {
-  // ONLY the quad overlay (proc pane) replaces the tri-wireframe — its quad
-  // borders are the wires, so the surface must stay solid. Everywhere else the
-  // Wireframe toggle shows a grey all-edges overlay (built lazily) ON TOP of the
-  // solid surface, so you get solid + wireframe together (never a hidden fill).
-  const triWire = false;  // never make the surface material itself wireframe
-  // ONE logic for both panes: the edge overlay (quadOverlay on proc, wireOverlay
-  // on input — both fetched from a server endpoint) follows the wireframe toggle.
+  // ONE place that owns pane appearance: surface material + overlay visibility.
+  // The wireframe is a LineSegments overlay ON TOP of the solid surface; the
+  // surface material uses polygonOffset to sit a hair BEHIND in the depth
+  // buffer, so coplanar lines always win cleanly (no z-fighting flicker).
   if (v.quadOverlay) v.quadOverlay.visible = state.wireframe;
   if (v.wireOverlay) v.wireOverlay.visible = state.wireframe;
-  if (v.featureOverlay) v.featureOverlay.visible = state.wireframe;
   for (const m of v.meshes) {
     // FEATURES view: paint the surface by region label (overrides curvature).
     const useFeat = state.features && v.featureColors &&
@@ -146,31 +143,33 @@ function applyMaterials(v) {
       m.geometry.setAttribute("color", new THREE.BufferAttribute(fc, 3));
     }
     if (!m.geometry.getAttribute("normal")) m.geometry.computeVertexNormals();
-    // only use vertex colours in curvature / features mode; otherwise a flat
-    // material colour (so a GLB-baked default colour can't keep it white).
+    // vertex colours only in curvature / features mode; else flat grey.
     const useVColor = (state.curvature || useFeat) && !!m.geometry.getAttribute("color");
-    // dark-grey surface is the DEFAULT (so wires always pop); the lighter grey is
-    // only used while a curvature/feature colour view is active (it isn't).
-    const surfColor = useVColor ? 0xbfc8d2 : 0x808890;
-    const mat = new THREE.MeshStandardMaterial({
-      color: surfColor,
+    m.material?.dispose?.();          // don't leak the previous material
+    m.material = new THREE.MeshStandardMaterial({
+      color: useVColor ? 0xc6c6c2 : 0x8b8b87,
       metalness: 0.05,
       roughness: 0.9,
-      flatShading: false,
       vertexColors: useVColor,
-      wireframe: triWire,
       side: THREE.DoubleSide,
+      polygonOffset: true,            // push surface back so wire overlays win
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
     });
-    m.material = mat;
   }
 }
 
 async function loadModel(v, url, keepView = false) {
-  const buf = await (await fetch(url)).arrayBuffer();
+  // generation guard: rapid toggles / loads can overlap — only the LATEST call
+  // for this viewer may touch the scene, or a slow response wins over a new one
+  const gen = ++v.gen;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("model load failed: " + res.statusText);
+  const buf = await res.arrayBuffer();
   const gltf = await loader.parseAsync(buf, "");
+  if (gen !== v.gen) return;             // superseded while downloading
   clearHolder(v);
   v.quadOverlay = null;
-  v.featureOverlay = null;
   v.wireOverlay = null;
   const root = gltf.scene;
   root.traverse((c) => {
@@ -183,36 +182,40 @@ async function loadModel(v, url, keepView = false) {
 
 // draw true quad borders (proc): REPLACES the tri-wireframe (slot=quadOverlay)
 async function loadQuadEdges(v, sid) {
-  return loadEdgeOverlay(v, `/api/quadedges/${sid}`, "quadOverlay", 0x6fd3ff);
+  return loadEdgeOverlay(v, `/api/quadedges/${sid}`, "quadOverlay", 0xb8d94b);
 }
 // input full wireframe — SAME machinery as loadQuadEdges (server endpoint -> line
 // overlay), so both panes work identically.
 async function loadOrigWire(v, sid) {
-  return loadEdgeOverlay(v, `/api/origedges/${sid}`, "wireOverlay", 0x6fd3ff);
+  return loadEdgeOverlay(v, `/api/origedges/${sid}`, "wireOverlay", 0xb8d94b);
 }
 
-// generic: fetch {vertices, edges} and draw as a LineSegments overlay
-async function loadEdgeOverlay(v, url, slot = "quadOverlay", color = 0x6fd3ff) {
+// generic: fetch the BINARY edge blob and draw as an indexed LineSegments overlay.
+// Blob layout (see app.py _edge_blob): uint32 nV, uint32 nE, float32 verts
+// (nV*3), uint32 edge indices (nE*2). Binary + indexed geometry is what makes
+// dense-mesh wireframes appear instantly instead of after seconds of JSON.
+async function loadEdgeOverlay(v, url, slot = "quadOverlay", color = 0xb8d94b) {
   try {
+    const gen = v.gen;                   // belongs to the current model load
     const res = await fetch(url);
     if (!res.ok) return;
-    const { vertices, edges } = await res.json();
-    // Overlay coords share the GLB's coordinate space (verified identical bbox);
-    // no rotation, or the lines would float off the surface.
-    const pos = new Float32Array(edges.length * 6);
-    for (let i = 0; i < edges.length; i++) {
-      const a = vertices[edges[i][0]], b = vertices[edges[i][1]];
-      pos.set([a[0], a[1], a[2], b[0], b[1], b[2]], i * 6);
-    }
+    const buf = await res.arrayBuffer();
+    if (gen !== v.gen) return;           // a newer model replaced this one mid-fetch
+    const [nV, nE] = new Uint32Array(buf, 0, 2);
+    const verts = new Float32Array(buf, 8, nV * 3);
+    const index = new Uint32Array(buf, 8 + nV * 12, nE * 2);
     const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    const line = new THREE.LineSegments(
-      g, new THREE.LineBasicMaterial({ color }));
+    g.setAttribute("position", new THREE.BufferAttribute(verts, 3));
+    g.setIndex(new THREE.BufferAttribute(index, 1));
+    const line = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color }));
+    line.renderOrder = 1;             // draw after the surface (which is offset back)
     v[slot] = line;
     line.visible = state.wireframe;
     v.holder.add(line);
     applyMaterials(v);
-  } catch (_) { /* no overlay */ }
+  } catch (err) {
+    console.warn("edge overlay failed:", url, err);
+  }
 }
 
 function fitView(v) {
@@ -234,8 +237,8 @@ function fitView(v) {
   v.controls.update();
 
   const gSize = radius * 4;
-  left.scene.children.forEach((c) => { if (c.isGridHelper) { c.scale.setScalar(gSize / 20); c.position.set(center.x, box.min.y, center.z); } });
-  right.scene.children.forEach((c) => { if (c.isGridHelper) { c.scale.setScalar(gSize / 20); c.position.set(center.x, box.min.y, center.z); } });
+  // only THIS pane's grid — sizing the other pane's grid from this bbox is wrong
+  v.scene.children.forEach((c) => { if (c.isGridHelper) { c.scale.setScalar(gSize / 20); c.position.set(center.x, box.min.y, center.z); } });
 
   if (state.sync) {
     state.syncing = true;
@@ -259,10 +262,16 @@ async function onSessionLoaded(data) {
   setStatus(`Loaded ${data.name} — ${fmtTri(data.orig.faces)} tris`);
   // a NEW object -> reset the colour-view toggles so stale curvature/feature state
   // can't corrupt the fresh load (wireframe is a harmless independent toggle).
-  if (state.curvature) { state.curvature = false; document.getElementById("btn-curv").classList.remove("on"); }
-  if (state.features) { state.features = false; document.getElementById("btn-features").classList.remove("on"); clearFeatures(left); }
+  if (state.curvature) { state.curvature = false; setToggle("btn-curv", false); }
+  if (state.features) { state.features = false; setToggle("btn-features", false); clearFeatures(left); }
   // clear any previous remesh from the right pane
-  clearHolder(right); right.quadOverlay = right.featureOverlay = right.wireOverlay = null;
+  clearHolder(right); right.quadOverlay = right.wireOverlay = null;
+  // a new session has no proc mesh: export/postprocess from the OLD session must
+  // not stay live (stale-session API calls, wrap with the old model's units)
+  document.getElementById("btn-export").disabled = true;
+  document.getElementById("postprocess").hidden = true;
+  resetShrinkwrapUI();
+  state.procIsQuad = false;
   // load the REAL input geometry and REFIT the camera (new object -> reset view).
   await loadModel(left, `/api/model/${state.sessionId}?which=orig`);  // keepView=false -> refits
   await loadOrigWire(left, state.sessionId);   // input wireframe (server endpoint, like proc)
@@ -326,22 +335,27 @@ async function loadDemo(name) {
 // --------------------------------------------------------------------------- //
 async function doRemesh() {
   if (!state.sessionId) return;
+  const sid = state.sessionId;   // pin the session: a demo/file load mid-remesh must not cross-wire
   const btn = document.getElementById("btn-remesh");
   btn.disabled = true;
+  // loading another model during a long remesh (NeurCross = minutes) would mix sessions
+  document.getElementById("btn-open").disabled = true;
+  document.getElementById("demo-select").disabled = true;
   document.body.classList.add("busy");
   setStatus("Remeshing …", true);
   try {
     const isQuad = state.mode === "quad";
     const body = isQuad ? {
-      session_id: state.sessionId,
+      session_id: sid,
       quad: true,
       quad_engine: document.getElementById("quad_engine").value,
       quad_target: Math.max(1, Math.round(+val("quad_target_num") || +val("quad_target"))),
       quad_sharp_mode: document.getElementById("quad_sharp_mode").value,
       quad_sharp_angle: +val("quad_sharp_angle"),
+      quad_adaptivity: +val("quad_adaptivity"),
       colorize: document.getElementById("quad_colorize").checked,
     } : {
-      session_id: state.sessionId,
+      session_id: sid,
       flat_factor: +val("flat_factor"),
       detail_factor: +val("detail_factor"),
       contrast: +val("contrast"),
@@ -359,17 +373,19 @@ async function doRemesh() {
     });
     if (!res.ok) throw new Error((await res.text()) || "remesh failed");
     const s = await res.json();
+    if (state.sessionId !== sid) return;   // another model was loaded meanwhile — drop this result
     document.getElementById("st-orig").textContent = fmtTri(s.orig.faces);
     const procLabel = s.quads != null ? `${fmtTri(s.quads)}q` : fmtTri(s.proc.faces);
     document.getElementById("st-proc").textContent = procLabel;
     document.getElementById("st-red").textContent = s.face_reduction_pct + "%";
     document.getElementById("st-time").textContent = (s.elapsed_ms / 1000).toFixed(2) + "s";
     document.getElementById("empty-right").style.display = "none";
-    await loadModel(right, `/api/model/${state.sessionId}?which=proc&color=1`);
+    await loadModel(right, `/api/model/${sid}?which=proc&color=1`);
     // wireframe overlay for the remeshed pane: quad borders in QUAD mode, the
     // full triangle wireframe (proc edges) in TRIS mode — works in any mode.
-    if (s.quads != null) await loadQuadEdges(right, state.sessionId);
-    else await loadEdgeOverlay(right, `/api/procedges/${state.sessionId}`, "wireOverlay", 0x6fd3ff);
+    state.procIsQuad = s.quads != null;   // what the proc mesh IS (reloadProc relies on it)
+    if (state.procIsQuad) await loadQuadEdges(right, sid);
+    else await loadEdgeOverlay(right, `/api/procedges/${sid}`, "wireOverlay", 0xb8d94b);
     document.getElementById("btn-export").disabled = false;
     document.getElementById("postprocess").hidden = false;  // enable shrinkwrap
     resetShrinkwrapUI();
@@ -382,6 +398,8 @@ async function doRemesh() {
     alert("Remesh failed:\n" + e.message);
   } finally {
     btn.disabled = false;
+    document.getElementById("btn-open").disabled = false;
+    document.getElementById("demo-select").disabled = false;
     document.body.classList.remove("busy");
   }
 }
@@ -390,41 +408,45 @@ async function doRemesh() {
 //  Toggles
 // --------------------------------------------------------------------------- //
 function refreshAllMaterials() {
+  // applyMaterials is the single owner of surface + overlay state — no extra logic here
   applyMaterials(left);
   applyMaterials(right);
-  // quad overlays follow the wireframe toggle
-  for (const v of [left, right]) {
-    if (v.quadOverlay) v.quadOverlay.visible = state.wireframe;
-    if (v.featureOverlay) v.featureOverlay.visible = state.wireframe;
-  }
 }
-document.getElementById("btn-curv").addEventListener("click", async (e) => {
+// one place sets a toggle's visual + accessibility state
+function setToggle(id, on) {
+  const b = document.getElementById(id);
+  b.classList.toggle("on", on);
+  b.setAttribute("aria-pressed", String(on));
+}
+document.getElementById("btn-curv").addEventListener("click", async () => {
   state.curvature = !state.curvature;
-  e.currentTarget.classList.toggle("on", state.curvature);
+  setToggle("btn-curv", state.curvature);
   if (state.curvature && state.features) {  // curvature and features are exclusive colour views
     state.features = false;
-    document.getElementById("btn-features").classList.remove("on");
+    setToggle("btn-features", false);
     clearFeatures(left);
   }
   // swap the input geometry: densified colour mesh for curvature, real input else
-  if (state.sessionId) await refreshInputModel();
+  try { if (state.sessionId) await refreshInputModel(); }
+  catch (e) { setStatus("View failed: " + e.message); }
   refreshAllMaterials();
 });
-document.getElementById("btn-wire").addEventListener("click", (e) => {
+document.getElementById("btn-wire").addEventListener("click", () => {
   state.wireframe = !state.wireframe;
-  e.currentTarget.classList.toggle("on", state.wireframe);
+  setToggle("btn-wire", state.wireframe);
   refreshAllMaterials();
 });
-document.getElementById("btn-features").addEventListener("click", async (e) => {
+document.getElementById("btn-features").addEventListener("click", async () => {
   state.features = !state.features;
-  e.currentTarget.classList.toggle("on", state.features);
+  setToggle("btn-features", state.features);
   if (state.features && state.curvature) {  // features owns the colour view; turn curvature off
     state.curvature = false;
-    document.getElementById("btn-curv").classList.remove("on");
+    setToggle("btn-curv", false);
   }
   if (!state.features) clearFeatures(left);
   // refreshInputModel reloads the real input (features uses it 1:1) + overlays
-  if (state.sessionId) await refreshInputModel();
+  try { if (state.sessionId) await refreshInputModel(); }
+  catch (e) { setStatus("View failed: " + e.message); }
   refreshAllMaterials();
 });
 
@@ -471,7 +493,7 @@ function clearFeatures(v) {
 }
 document.getElementById("btn-sync").addEventListener("click", (e) => {
   state.sync = !state.sync;
-  e.currentTarget.classList.toggle("on", state.sync);
+  setToggle("btn-sync", state.sync);
   if (state.sync) { state.syncing = true; copyView(left, right); right.controls.update(); state.syncing = false; }
 });
 
@@ -498,10 +520,22 @@ bind("iterations", (v) => v.toFixed(0));
 
 // quad readouts (explicit id -> label, since ids don't match the bind pattern)
 [["quad_sharp_angle", "qsharp", (v) => v.toFixed(0) + "°"],
+ ["quad_adaptivity", "qadapt", (v) => v.toFixed(1)],
 ].forEach(([id, vid, fmt]) => {
   const el = document.getElementById(id), out = document.getElementById("v-" + vid);
   if (el && out) { const upd = () => out.textContent = fmt(+el.value); el.addEventListener("input", upd); upd(); }
 });
+
+// AutoRemesher's adaptivity slider is only meaningful for that engine — show it
+// only when "autoremesher" is selected, hidden otherwise.
+(() => {
+  const engine = document.getElementById("quad_engine");
+  const field = document.getElementById("quad-adaptivity-field");
+  if (!engine || !field) return;
+  const sync = () => { field.hidden = engine.value !== "autoremesher"; };
+  engine.addEventListener("change", sync);
+  sync();
+})();
 
 // Target quads: editable number box + slider, two-way synced. The NUMBER box is
 // the source of truth (lets you type any value, even beyond the slider range).
@@ -525,11 +559,15 @@ function setMode(m) {
   document.getElementById("mode-quad").classList.toggle("active", m === "quad");
   document.getElementById("tris-settings").classList.toggle("hidden", m !== "tris");
   document.getElementById("quad-settings").classList.toggle("hidden", m !== "quad");
-  // swap the preset list to match the mode
+  // swap the preset list to match the mode — and APPLY what the dropdown shows,
+  // so the controls always match the selected preset (it used to just display one)
   if (typeof refreshPresetSelect === "function") {
     refreshPresetSelect();
     const sel = document.getElementById("preset-select");
-    if (sel && sel.options.length) sel.selectedIndex = 0;
+    if (sel && sel.options.length) {
+      sel.selectedIndex = 0;
+      applyPreset(sel.value);
+    }
   }
 }
 document.getElementById("mode-tris").addEventListener("click", () => setMode("tris"));
@@ -537,7 +575,13 @@ document.getElementById("mode-quad").addEventListener("click", () => setMode("qu
 
 document.getElementById("btn-remesh").addEventListener("click", doRemesh);
 document.getElementById("btn-open").addEventListener("click", () => document.getElementById("file-input").click());
-document.getElementById("file-input").addEventListener("change", (e) => { if (e.target.files[0]) uploadFile(e.target.files[0]); });
+document.getElementById("file-input").addEventListener("change", async (e) => {
+  const f = e.target.files[0];
+  e.target.value = "";   // else picking the SAME file again never re-fires change
+  if (!f) return;
+  try { await uploadFile(f); }
+  catch (err) { setStatus("Error: " + err.message); alert("Upload failed:\n" + err.message); }
+});
 
 // --------------------------------------------------------------------------- //
 //  Presets (localStorage)
@@ -551,21 +595,30 @@ const BUILTIN_TRIS = {
   "Gentle cleanup": { flat_factor: 2, detail_factor: 0.9, contrast: 2, feature_angle: 20, iterations: 5, max_work_faces: 150000, pre_simplify: false, colorize: true, preserve_boundary: true },
 };
 const BUILTIN_QUADS = {
-  "Balanced (recommended)": { quad_target: 2500, quad_sharp_mode: "auto", quad_sharp_angle: 35 },
-  "Hard-surface (props)": { quad_target: 2500, quad_sharp_mode: "hard", quad_sharp_angle: 30 },
-  "Dense detail": { quad_target: 5000, quad_sharp_mode: "auto", quad_sharp_angle: 30 },
-  "Low poly (game)": { quad_target: 2500, quad_sharp_mode: "hard", quad_sharp_angle: 40 },
-  "Organic / smooth": { quad_target: 2500, quad_sharp_mode: "smooth", quad_sharp_angle: 35 },
+  "Balanced (recommended)": { quad_target: 2500, quad_sharp_mode: "auto", quad_sharp_angle: 35, quad_adaptivity: 0.7 },
+  "Hard-surface (props)": { quad_target: 2500, quad_sharp_mode: "hard", quad_sharp_angle: 30, quad_adaptivity: 0.4 },
+  "Dense detail": { quad_target: 5000, quad_sharp_mode: "auto", quad_sharp_angle: 30, quad_adaptivity: 0.9 },
+  "Low poly (game)": { quad_target: 2500, quad_sharp_mode: "hard", quad_sharp_angle: 40, quad_adaptivity: 0.6 },
+  "Organic / smooth": { quad_target: 2500, quad_sharp_mode: "smooth", quad_sharp_angle: 35, quad_adaptivity: 0.8 },
 };
 function builtinsFor(mode) { return mode === "quad" ? BUILTIN_QUADS : BUILTIN_TRIS; }
 
 function loadCustomPresets() {
-  try { return JSON.parse(localStorage.getItem(PRESET_KEY) || "{}"); } catch { return {}; }
+  // stored shape: { name: { mode: "tris"|"quad", params: {...} } }
+  // (older entries were bare param objects — migrate them as tris presets)
+  try {
+    const raw = JSON.parse(localStorage.getItem(PRESET_KEY) || "{}");
+    for (const [k, v] of Object.entries(raw)) {
+      if (v && !v.params) raw[k] = { mode: "tris", params: v };
+    }
+    return raw;
+  } catch { return {}; }
 }
 function refreshPresetSelect() {
   const sel = document.getElementById("preset-select");
   const custom = loadCustomPresets();
-  const customNames = Object.keys(custom).sort();
+  // customs are PER MODE — a quad preset in the tris list would apply nothing
+  const customNames = Object.keys(custom).filter((n) => custom[n].mode === state.mode).sort();
   const cur = sel.value;
   let html = "";
   for (const n of Object.keys(builtinsFor(state.mode))) {
@@ -581,8 +634,9 @@ function refreshPresetSelect() {
   if (cur) sel.value = cur;
 }
 function applyPreset(name) {
-  const presets = { ...builtinsFor(state.mode), ...loadCustomPresets() };
-  const p = presets[name];
+  const custom = loadCustomPresets();
+  const p = custom[name]?.mode === state.mode ? custom[name].params
+          : builtinsFor(state.mode)[name];
   if (!p) return;
   for (const [k, v] of Object.entries(p)) {
     const el = document.getElementById(k);
@@ -596,6 +650,17 @@ function applyPreset(name) {
   setStatus(`Preset: ${name}`);
 }
 function collectParams() {
+  // collect the CURRENT mode's controls — saving tris values as a "quad preset"
+  // was the old bug (the preset then applied nothing visible)
+  if (state.mode === "quad") {
+    return {
+      quad_target_num: +val("quad_target_num") || +val("quad_target"),
+      quad_sharp_mode: document.getElementById("quad_sharp_mode").value,
+      quad_sharp_angle: +val("quad_sharp_angle"),
+      quad_adaptivity: +val("quad_adaptivity"),
+      quad_colorize: document.getElementById("quad_colorize").checked,
+    };
+  }
   const ids = ["flat_factor", "detail_factor", "contrast", "feature_angle", "iterations", "max_work_faces"];
   const out = {};
   for (const id of ids) out[id] = +document.getElementById(id).value;
@@ -609,17 +674,17 @@ function collectParams() {
 document.getElementById("preset-select").addEventListener("change", (e) => {
   if (e.target.value) applyPreset(e.target.value);
 });
-// save with icon: auto-name "Custom preset N"
+// save with icon: auto-name "Custom preset N", tagged with the current mode
 document.getElementById("btn-save-preset").addEventListener("click", () => {
   const custom = loadCustomPresets();
   let n = 1;
   while (custom[`Custom preset ${n}`]) n++;
   const name = `Custom preset ${n}`;
-  custom[name] = collectParams();
+  custom[name] = { mode: state.mode, params: collectParams() };
   localStorage.setItem(PRESET_KEY, JSON.stringify(custom));
   refreshPresetSelect();
   document.getElementById("preset-select").value = name;
-  setStatus(`Saved ${name}`);
+  setStatus(`Saved ${name} (${state.mode.toUpperCase()})`);
 });
 // initialise mode (sets panel visibility + the matching preset list)
 setMode("tris");
@@ -658,19 +723,33 @@ btnExport.addEventListener("click", (e) => {
 document.addEventListener("click", (e) => {
   if (!exportMenu.contains(e.target) && e.target !== btnExport) exportMenu.classList.add("hidden");
 });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") exportMenu.classList.add("hidden");
+});
 exportMenu.querySelectorAll("button").forEach((b) => {
-  b.addEventListener("click", () => {
-    if (!state.sessionId) return;
+  b.addEventListener("click", async () => {
+    if (!state.sessionId) { exportMenu.classList.add("hidden"); return; }
     const fmt = b.dataset.fmt;
-    const url = `/api/export/${state.sessionId}?which=proc&fmt=${fmt}`;
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
     exportMenu.classList.add("hidden");
-    setStatus(`Exported remeshed model as ${fmt.toUpperCase()}`);
+    setStatus(`Exporting ${fmt.toUpperCase()}…`, true);
+    try {
+      // fetch -> blob (a bare anchor-click can't see errors and reports
+      // "Exported" even when the server 404s)
+      const res = await fetch(`/api/export/${state.sessionId}?which=proc&fmt=${fmt}`);
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
+      const blob = await res.blob();
+      const name = (res.headers.get("Content-Disposition") || "").match(/filename="(.+?)"/)?.[1]
+        || `remeshed.${fmt}`;
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      setStatus(`Exported ${name}`);
+    } catch (err) {
+      setStatus("Export failed: " + err.message);
+      alert("Export failed:\n" + err.message);
+    }
   });
 });
 
@@ -685,8 +764,19 @@ window.addEventListener("dragleave", () => { dragDepth = Math.max(0, dragDepth -
 window.addEventListener("drop", async (e) => {
   if (!hasFiles(e)) return;
   e.preventDefault(); dragDepth = 0; dz.classList.add("hidden");
-  const f = [...e.dataTransfer.files].find((x) => /\.(fbx|glb|gltf|obj|ply|stl)$/i.test(x.name));
-  if (f) { try { await uploadFile(f); } catch (err) { setStatus("Error: " + err.message); alert(err.message); } }
+  if (document.getElementById("btn-open").disabled) {   // remesh in flight
+    setStatus("Busy remeshing — drop the file again when it finishes");
+    return;
+  }
+  const files = [...e.dataTransfer.files];
+  const f = files.find((x) => /\.(fbx|glb|gltf|obj|ply|stl)$/i.test(x.name));
+  if (!f) {
+    // say WHY nothing happened instead of silently closing the overlay
+    setStatus(files.length ? `Can't load "${files[0].name}" — use FBX, GLB, GLTF, OBJ, PLY or STL` : "Nothing dropped");
+    return;
+  }
+  try { await uploadFile(f); }
+  catch (err) { setStatus("Error: " + err.message); alert(err.message); }
 });
 function hasFiles(e) { return e.dataTransfer && [...(e.dataTransfer.types || [])].includes("Files"); }
 
@@ -733,8 +823,6 @@ function escapeAttr(s) { return String(s).replace(/"/g, "&quot;").replace(/</g, 
 //  you can see the alignment. "Wrap" runs the accurate projection on the backend
 //  and reloads the result; the offset (%) is converted to model units client-side.
 // --------------------------------------------------------------------------- //
-let _swDiag = 1;  // bbox diagonal of the current model, for %-to-units on offset/distance
-
 function resetShrinkwrapUI() {
   const en = document.getElementById("sw_enable");
   if (en) en.checked = false;
@@ -743,38 +831,51 @@ function resetShrinkwrapUI() {
 }
 
 function removeGhost() {
-  if (right.ghost) { right.holder.remove(right.ghost); right.ghost.geometry?.dispose?.(); right.ghost.material?.dispose?.(); right.ghost = null; }
+  if (right.ghost) {
+    right.holder.remove(right.ghost);
+    // the ghost is a Group: dispose its CHILDREN or the full original mesh
+    // (potentially millions of tris) stays in GPU memory on every cycle
+    right.ghost.traverse((c) => {
+      c.geometry?.dispose?.();
+      if (c.material) (Array.isArray(c.material) ? c.material : [c.material]).forEach((m) => m.dispose());
+    });
+    right.ghost = null;
+  }
 }
 
 async function showGhost() {
   // load the original mesh as a translucent overlay in the remeshed pane
   removeGhost();
-  const buf = await (await fetch(`/api/model/${state.sessionId}?which=orig`)).arrayBuffer();
-  const gltf = await loader.parseAsync(buf, "");
+  const res = await fetch(`/api/model/${state.sessionId}?which=orig`);
+  if (!res.ok) throw new Error("ghost load failed: " + res.statusText);
+  const gltf = await loader.parseAsync(await res.arrayBuffer(), "");
   const grp = new THREE.Group();
-  const box = new THREE.Box3();
   gltf.scene.traverse((c) => {
     if (c.isMesh) {
-      const g = c.geometry.clone();
-      box.expandByObject(c);
-      const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({
-        color: 0x4cc4ff, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide,
-      }));
-      grp.add(mesh);
+      grp.add(new THREE.Mesh(c.geometry, new THREE.MeshStandardMaterial({
+        color: 0xb8d94b, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide,
+      })));
     }
   });
-  _swDiag = box.getSize(new THREE.Vector3()).length() || 1;
   right.ghost = grp;
   right.holder.add(grp);
 }
 
+function procDiag() {
+  // model size for %->units conversion, from the ALWAYS-PRESENT proc mesh (the
+  // ghost may still be downloading — using it made the units racy/stale)
+  const box = new THREE.Box3();
+  for (const m of right.meshes) box.expandByObject(m);
+  return box.isEmpty() ? 1 : box.getSize(new THREE.Vector3()).length() || 1;
+}
+
 async function reloadProc() {
   // reload the (wrapped/reset) proc mesh + its wireframe overlay, keep the view
-  const wasWire = state.wireframe;
   await loadModel(right, `/api/model/${state.sessionId}?which=proc&color=1`, true);
-  if (state.mode === "tris") await loadEdgeOverlay(right, `/api/procedges/${state.sessionId}`, "wireOverlay", 0x6fd3ff);
-  else await loadQuadEdges(right, state.sessionId);
-  state.wireframe = wasWire; applyMaterials(right);
+  // overlay matches what the mesh IS (recorded at remesh time), not the UI tab
+  if (state.procIsQuad) await loadQuadEdges(right, state.sessionId);
+  else await loadEdgeOverlay(right, `/api/procedges/${state.sessionId}`, "wireOverlay", 0xb8d94b);
+  applyMaterials(right);
   // keep the ghost visible while shrinkwrap stays enabled (so you can re-wrap)
   if (document.getElementById("sw_enable")?.checked) await showGhost();
 }
@@ -785,8 +886,11 @@ async function reloadProc() {
   if (!enable) return;
 
   enable.addEventListener("change", async () => {
-    if (enable.checked) { controls.hidden = false; await showGhost(); }
-    else { controls.hidden = true; removeGhost(); }
+    if (enable.checked) {
+      controls.hidden = false;
+      try { await showGhost(); }
+      catch (e) { setStatus("Ghost preview failed: " + e.message); }
+    } else { controls.hidden = true; removeGhost(); }
   });
 
   // readouts
@@ -798,17 +902,22 @@ async function reloadProc() {
     document.getElementById("v-swoff").textContent = (+off.value).toFixed(1) + "%";
   });
 
-  document.getElementById("sw_wrap").addEventListener("click", async () => {
+  const wrapBtn = document.getElementById("sw_wrap");
+  const resetBtn = document.getElementById("sw_reset");
+
+  wrapBtn.addEventListener("click", async () => {
     setStatus("Shrinkwrapping…", true);
     document.body.classList.add("busy");
+    wrapBtn.disabled = resetBtn.disabled = true;   // no double-fire while in flight
     try {
+      const diag = procDiag();
       const res = await fetch("/api/shrinkwrap", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           session_id: state.sessionId,
           mode: document.getElementById("sw_mode").value,
-          distance: (+dist.value / 100) * _swDiag,   // % of bbox diagonal -> units
-          offset: (+off.value / 100) * _swDiag,
+          distance: (+dist.value / 100) * diag,   // % of proc bbox diagonal -> units
+          offset: (+off.value / 100) * diag,
           reset: false,
         }),
       });
@@ -817,18 +926,37 @@ async function reloadProc() {
       setStatus("Shrinkwrapped onto original.");
     } catch (e) {
       setStatus("Error: " + e.message); alert("Shrinkwrap failed:\n" + e.message);
-    } finally { document.body.classList.remove("busy"); }
+    } finally {
+      document.body.classList.remove("busy");
+      wrapBtn.disabled = resetBtn.disabled = false;
+    }
   });
 
-  document.getElementById("sw_reset").addEventListener("click", async () => {
+  resetBtn.addEventListener("click", async () => {
     setStatus("Resetting…", true);
+    wrapBtn.disabled = resetBtn.disabled = true;
     try {
-      await fetch("/api/shrinkwrap", {
+      const res = await fetch("/api/shrinkwrap", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: state.sessionId, reset: true }),
       });
+      if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
       await reloadProc();
       setStatus("Reset to pre-shrinkwrap.");
     } catch (e) { setStatus("Error: " + e.message); }
+    finally { wrapBtn.disabled = resetBtn.disabled = false; }
   });
 })();
+
+// --------------------------------------------------------------------------- //
+//  Filled slider tracks — the CSS paints the accent up to --p (the value)
+// --------------------------------------------------------------------------- //
+function paintRange(el) {
+  const min = +el.min || 0, max = +el.max || 100;
+  const p = ((+el.value - min) / (max - min)) * 100;
+  el.style.setProperty("--p", p + "%");
+}
+document.querySelectorAll('input[type="range"]').forEach((el) => {
+  paintRange(el);
+  el.addEventListener("input", () => paintRange(el));   // covers preset apply too (dispatched input)
+});

@@ -34,7 +34,10 @@ A local web app that takes any 3D model (FBX / GLB / GLTF / OBJ / PLY / STL) and
 | Engine | What it is | Speed | Best for |
 |---|---|---|---|
 | **QuadWild-BiMDF** (default) | Feature-line-driven pure-quad remesher (CGG Bern, TOG 2023). Bi-MDF / libSatsuma flow solver. | ~2–3 s | Everything; hard-surface |
+| **AutoRemesher** (optional) | Parameterization-first pure-quad remesher (Geogram `FrameField` + `quad_cover`, the QuadCover lineage). Curvature-**adaptive** quad density — dense where it curves, relaxed on flats. MIT. | ~1–5 s | Shapes with a detail gradient (small features that QuadWild's uniform density starves) |
 | **NeurCross** (optional) | Neural cross-field steering (SIGGRAPH 2025). A per-shape network computes the field; QuadWild extracts quads guided by it. | ~1–2 min, needs a CUDA GPU | Organic shapes |
+
+> **Why AutoRemesher:** QuadWild uses a single global `scaleFact`, so small/detailed regions get the same quad density as large flat ones — detail can be lost. AutoRemesher computes a per-face curvature scaling field and bakes it into a global integer-grid UV, so quads are *denser where the surface curves and relaxed on flats*. The **Density adaptivity** slider (0 = uniform, 1 = fully adaptive) controls the gradient. It's a different *school* of remeshing (parameterization-first vs field-tracing), complementary to QuadWild — try both.
 
 > **NeurCross integration note:** QuadWild computes its own cross field internally and does not document an external-field input. ThoRemesher drives it through the undocumented `.rosy` import path — run mode 1 to remesh, write the neural field per-face, then re-run with `do_remesh 0` and the `.rosy` passed as a CLI argument so QuadWild *imports* the field instead of recomputing it. See `quadwild.py` / `neurcross.py`.
 
@@ -60,12 +63,18 @@ Drop a `.fbx` / `.glb` / `.obj` … into the window, pick **TRIS** or **QUAD**, 
 > - **`_neurcross/`** — NeurCross repo, only for the neural engine —
 >   [QiujieDong/NeurCross](https://github.com/QiujieDong/NeurCross) (AGPL-3).
 >   Needs a CUDA GPU + `torch`. Optional; the engine falls back to QuadWild without it.
+> - **`_autoremesher/`** — AutoRemesher source + pybind11 build, only for the
+>   adaptive engine — [huxingyi/autoremesher](https://github.com/huxingyi/autoremesher) (MIT).
+>   Build deps: `cmake`, `libtbb-dev`, `pybind11`. Build with
+>   `./_autoremesher/clone_source.sh && ./_autoremesher/build.sh`. Optional; the
+>   engine falls back to QuadWild without it.
 
 ## Requirements
 
 - Python 3.10+
 - A WebGL-capable browser
 - (QUAD mode) the `_quadwild/` binaries on Linux
+- (AutoRemesher) `cmake` + `libtbb-dev` + `pybind11` to build the extension
 - (NeurCross) a CUDA GPU + `torch`
 
 <details>
@@ -105,8 +114,9 @@ pip install -r requirements.txt
 
 | Control | Meaning |
 |---|---|
-| Engine | QuadWild-BiMDF (fast) or NeurCross (neural, slow, GPU) |
+| Engine | QuadWild-BiMDF (fast) · AutoRemesher (adaptive density) · NeurCross (neural, slow, GPU) |
 | Target quads | approximate output quad count (type any value, 2.5k–100k slider) |
+| Density adaptivity | 0 uniform → 1 fully curvature-adaptive (AutoRemesher only) |
 | Sharp edges | auto-detect / hard (keep creases) / smooth |
 | Sharp angle | dihedral angle above which an edge counts as sharp |
 
@@ -132,6 +142,7 @@ pip install -r requirements.txt
 | `app.py` | FastAPI server — upload, remesh, shrinkwrap, model/edges, features, export |
 | `remesh_engine.py` | loader, curvature/detail score, engine dispatch, preprocessing, export |
 | `quadwild.py` | QuadWild-BiMDF wrapper (incl. external-field injection) |
+| `autoremesher.py` | AutoRemesher (Geogram QuadCover) adaptive-quad wrapper |
 | `neurcross.py` | NeurCross neural-field hybrid (steers QuadWild) |
 | `features.py` | feature analysis — crease loops, region classification, flow |
 | `postprocess.py` | shrinkwrap (project remesh onto original) |

@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <link rel="icon" type="image/x-icon" href="favicon.ico" />
 <title>ThoRemesher</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="style.css" />
 <script type="importmap">
 {
@@ -18,192 +21,209 @@
 <body>
   <div id="dropzone" class="dropzone hidden">
     <div class="dz-inner">
-      <div class="dz-icon">⬇</div>
-      <div class="dz-text">Drop FBX / GLB / GLTF / OBJ / PLY / STL here</div>
+      <div class="dz-grid"></div>
+      <div class="dz-text">Drop a mesh to load it</div>
+      <div class="dz-sub">FBX · GLB · GLTF · OBJ · PLY · STL</div>
     </div>
   </div>
 
   <header class="topbar">
     <div class="brand">
-      <span class="logo"><?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="32" height="32"><defs><linearGradient id="hg" x1="0" y1="0" x2="0" y2="120" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#1ab3f2"/><stop offset="0.6" stop-color="#facc26"/><stop offset="1" stop-color="#f23333"/></linearGradient></defs><g stroke="url(#hg)" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M 54 48 L 66 48 L 66 74 Z M 54 48 L 66 74 L 54 74 Z"/><path d="M 54 74 L 66 74 L 63 100 Z M 54 74 L 63 100 L 57 100 Z"/></g><g stroke="#4cc2ff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M 30 20 L 60 20 L 60 34 Z M 60 20 L 90 20 L 90 34 Z"/><path d="M 30 34 L 60 34 L 60 48 Z M 60 34 L 90 34 L 90 48 Z"/><path d="M 30 20 L 60 34 L 30 34 Z M 60 20 L 90 34 L 60 34 Z"/><path d="M 30 34 L 60 48 L 30 48 Z M 60 34 L 90 48 L 60 48 Z"/></g><g fill="#e6edf3"><circle cx="30" cy="20" r="2.5"/><circle cx="60" cy="20" r="2.5"/><circle cx="90" cy="20" r="2.5"/><circle cx="30" cy="34" r="2.5"/><circle cx="60" cy="34" r="2.5"/><circle cx="90" cy="34" r="2.5"/><circle cx="30" cy="48" r="2.5"/><circle cx="60" cy="48" r="2.5"/><circle cx="90" cy="48" r="2.5"/><circle cx="54" cy="48" r="3"/><circle cx="66" cy="48" r="3"/><circle cx="54" cy="74" r="3"/><circle cx="66" cy="74" r="3"/><circle cx="57" cy="100" r="3"/><circle cx="63" cy="100" r="3"/></g></svg></span>
-      <div>
+      <span class="logo"><?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="30" height="30"><defs><linearGradient id="hg" x1="0" y1="0" x2="0" y2="120" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#b8d94b"/><stop offset="0.6" stop-color="#facc26"/><stop offset="1" stop-color="#f23333"/></linearGradient></defs><g stroke="url(#hg)" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M 54 48 L 66 48 L 66 74 Z M 54 48 L 66 74 L 54 74 Z"/><path d="M 54 74 L 66 74 L 63 100 Z M 54 74 L 63 100 L 57 100 Z"/></g><g stroke="#b8d94b" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M 30 20 L 60 20 L 60 34 Z M 60 20 L 90 20 L 90 34 Z"/><path d="M 30 34 L 60 34 L 60 48 Z M 60 34 L 90 34 L 90 48 Z"/><path d="M 30 20 L 60 34 L 30 34 Z M 60 20 L 90 34 L 60 34 Z"/><path d="M 30 34 L 60 48 L 30 48 Z M 60 34 L 90 48 L 60 48 Z"/></g><g fill="#e6edf3"><circle cx="30" cy="20" r="2.5"/><circle cx="60" cy="20" r="2.5"/><circle cx="90" cy="20" r="2.5"/><circle cx="30" cy="34" r="2.5"/><circle cx="60" cy="34" r="2.5"/><circle cx="90" cy="34" r="2.5"/><circle cx="30" cy="48" r="2.5"/><circle cx="60" cy="48" r="2.5"/><circle cx="90" cy="48" r="2.5"/><circle cx="54" cy="48" r="3"/><circle cx="66" cy="48" r="3"/><circle cx="54" cy="74" r="3"/><circle cx="66" cy="74" r="3"/><circle cx="57" cy="100" r="3"/><circle cx="63" cy="100" r="3"/></g></svg></span>
+      <div class="brand-text">
         <div class="title">ThoRemesher</div>
         <div class="subtitle" id="status">Idle — drop a model to begin</div>
       </div>
     </div>
-    <div class="stats" id="stats">
-      <div class="chip"><span class="lbl">Original</span><span class="val" id="st-orig">—</span></div>
-      <div class="chip"><span class="lbl">Remeshed</span><span class="val" id="st-proc">—</span></div>
-      <div class="chip"><span class="lbl">Reduction</span><span class="val" id="st-red">—</span></div>
-      <div class="chip"><span class="lbl">Time</span><span class="val" id="st-time">—</span></div>
+
+    <div class="stats" id="stats" aria-label="Mesh statistics">
+      <div class="stat"><span class="stat-lbl">orig</span><span class="stat-val" id="st-orig">—</span></div>
+      <div class="stat"><span class="stat-lbl">remesh</span><span class="stat-val" id="st-proc">—</span></div>
+      <div class="stat"><span class="stat-lbl">Δ</span><span class="stat-val" id="st-red">—</span></div>
+      <div class="stat"><span class="stat-lbl">time</span><span class="stat-val" id="st-time">—</span></div>
     </div>
-    <div class="tb-actions">
-      <button id="btn-curv" class="toggle" title="Toggle curvature heatmap">Curvature</button>
-      <button id="btn-features" class="toggle" title="Show what the algorithm perceives: sharp edges, regions, flow">Features</button>
-      <button id="btn-wire" class="toggle" title="Toggle wireframe">Wireframe</button>
-      <button id="btn-sync" class="toggle on" title="Link the two cameras">Link Cameras</button>
+
+    <div class="tb-actions" role="group" aria-label="View options">
+      <button id="btn-curv" class="toggle" aria-pressed="false" title="Color the surface by curvature">Curvature</button>
+      <button id="btn-features" class="toggle" aria-pressed="false" title="Show detected creases, regions and flow">Features</button>
+      <button id="btn-wire" class="toggle" aria-pressed="false" title="Show the wireframe">Wireframe</button>
+      <button id="btn-sync" class="toggle on" aria-pressed="true" title="Rotate both views together">Link cameras</button>
     </div>
   </header>
 
   <div class="layout">
     <aside class="sidebar">
-      <div class="presets">
-        <label class="presets-label">Preset</label>
-        <div class="preset-row">
-          <select id="preset-select" class="preset-select"></select>
-          <button id="btn-save-preset" class="icon-btn" title="Save current settings as a custom preset">＋</button>
-        </div>
-      </div>
 
-      <div class="mode-row">
-        <button type="button" id="mode-tris" class="seg-btn active">TRIS</button>
-        <button type="button" id="mode-quad" class="seg-btn">QUAD</button>
-      </div>
-
-      <!-- QUAD mode -->
-      <div id="quad-settings" class="hidden">
-        <h3>Quad Remesh</h3>
-        <small class="panel-sub">pure-quad</small>
+      <!-- SOURCE — load something first -->
+      <div class="section">
+        <div class="section-head"><span class="section-name">Source</span><span class="quad-rule" aria-hidden="true"></span></div>
+        <button id="btn-open" class="btn-ghost">Open a mesh file…</button>
+        <input type="file" id="file-input" accept=".fbx,.glb,.gltf,.obj,.ply,.stl" hidden />
         <div class="field">
-          <label>Engine</label>
-          <select id="quad_engine" class="preset-select">
-            <option value="quadwild" selected>QuadWild-BiMDF (fast)</option>
-            <option value="neurcross">NeurCross (neural · slow, GPU)</option>
+          <label for="demo-select">Demo mesh</label>
+          <select id="demo-select">
+            <option value="">— pick one —</option>
           </select>
-          <small>QuadWild: fast (~2.5s). NeurCross: neural field, organic shapes, minutes/mesh.</small>
-        </div>
-        <div class="field">
-          <label>Target quads <input type="number" id="quad_target_num" class="num-input" min="50" step="100" value="2500" /></label>
-          <input type="range" id="quad_target" min="2500" max="100000" step="2500" value="2500" />
-          <small>Drag, or type an exact count (any value).</small>
-        </div>
-        <div class="field">
-          <label>Sharp edges</label>
-          <select id="quad_sharp_mode" class="preset-select">
-            <option value="auto" selected>Auto (detect)</option>
-            <option value="hard">Hard surface (keep edges)</option>
-            <option value="smooth">Smooth / organic</option>
-          </select>
-          <small>Whether to preserve sharp creases as edge loops.</small>
-        </div>
-        <div class="field">
-          <label>Sharp angle <b id="v-qsharp">35°</b></label>
-          <input type="range" id="quad_sharp_angle" min="10" max="90" step="1" value="35" />
-          <small>Dihedral angle above which an edge counts as sharp.</small>
-        </div>
-        <div class="checks">
-          <label><input type="checkbox" id="quad_colorize" checked /> Colorize by curvature</label>
         </div>
       </div>
 
-      <!-- TRIS mode -->
-      <div id="tris-settings">
-      <h3>Remesh settings</h3>
+      <!-- REMESH — mode, preset, settings -->
+      <div class="section">
+        <div class="section-head"><span class="section-name">Remesh</span><span class="quad-rule" aria-hidden="true"></span></div>
 
-      <div class="field">
-        <label>Flat-area edge size <b id="v-flat">2.5×</b></label>
-        <input type="range" id="flat_factor" min="1" max="10" step="0.1" value="2.5" />
-        <small>How coarse flat regions become (× avg edge).</small>
-      </div>
-
-      <div class="field">
-        <label>Detail edge size <b id="v-detail">0.9×</b></label>
-        <input type="range" id="detail_factor" min="0.3" max="4" step="0.1" value="0.9" />
-        <small>How fine detailed regions stay.</small>
-      </div>
-
-      <div class="field">
-        <label>Contrast <b id="v-contrast">2.5</b></label>
-        <input type="range" id="contrast" min="0.5" max="6" step="0.1" value="2.5" />
-        <small>Sharpness of flat ⇄ detailed transition.</small>
-      </div>
-
-      <div class="field">
-        <label>Feature angle <b id="v-feat">30°</b></label>
-        <input type="range" id="feature_angle" min="0" max="120" step="1" value="30" />
-        <small>Creases sharper than this are preserved.</small>
-      </div>
-
-      <div class="field">
-        <label>Iterations <b id="v-iter">8</b></label>
-        <input type="range" id="iterations" min="1" max="20" step="1" value="8" />
-        <small>More passes = smoother, more even triangles.</small>
-      </div>
-
-      <div class="field">
-        <label>Detail retention <b id="v-ret">60k</b></label>
-        <input type="range" id="max_work_faces" min="10000" max="200000" step="10000" value="60000" />
-        <small>Higher keeps more original detail on dense models.</small>
-      </div>
-
-      <div class="checks">
-        <label><input type="checkbox" id="pre_simplify" /> Pre-simplify (huge meshes)</label>
-        <label><input type="checkbox" id="colorize" checked /> Colorize by curvature</label>
-        <label><input type="checkbox" id="preserve_boundary" checked /> Preserve boundary</label>
-      </div>
-      </div><!-- /tris-settings -->
-
-      <div class="btn-row">
-        <button id="btn-remesh" class="primary" disabled>Remesh</button>
-      </div>
-      <!-- POSTPROCESS — runs on the remeshed result, on demand -->
-      <div class="section" id="postprocess" hidden>
-        <div class="section-title">POSTPROCESS</div>
-        <div class="field">
-          <label><input type="checkbox" id="sw_enable" /> Shrinkwrap onto original</label>
-          <small>Shows the original as a ghost; wraps the remesh onto it.</small>
+        <div class="mode-row" role="group" aria-label="Output type">
+          <button type="button" id="mode-tris" class="seg-btn active">TRIS</button>
+          <button type="button" id="mode-quad" class="seg-btn">QUAD</button>
         </div>
-        <div id="sw_controls" hidden>
+
+        <div class="field preset-row-wrap">
+          <label for="preset-select">Preset</label>
+          <div class="preset-row">
+            <select id="preset-select"></select>
+            <button id="btn-save-preset" class="btn-icon" title="Save current settings as a preset">＋</button>
+          </div>
+        </div>
+
+        <!-- QUAD mode -->
+        <div id="quad-settings" class="hidden">
           <div class="field">
-            <label>Type</label>
-            <select id="sw_mode" class="preset-select">
-              <option value="nearest">Nearest surface</option>
-              <option value="project">Project (along normals)</option>
+            <label for="quad_engine">Engine</label>
+            <select id="quad_engine">
+              <option value="quadwild" selected>QuadWild-BiMDF — fast</option>
+              <option value="autoremesher">AutoRemesher — adaptive density</option>
+              <option value="neurcross">NeurCross — neural, slow, GPU</option>
+            </select>
+            <small>QuadWild takes seconds. AutoRemesher densifies small/detail areas (Geogram QuadCover). NeurCross fits a neural field: minutes per mesh, best on organic shapes.</small>
+          </div>
+          <div class="field" id="quad-adaptivity-field" hidden>
+            <div class="field-line">
+              <label for="quad_adaptivity">Density adaptivity</label>
+              <b class="readout" id="v-qadapt">0.7</b>
+            </div>
+            <input type="range" id="quad_adaptivity" min="0" max="1" step="0.1" value="0.7" />
+            <small>0 = uniform. 1 = densest where it curves (AutoRemesher only).</small>
+          </div>
+          <div class="field">
+            <div class="field-line">
+              <label for="quad_target">Target quads</label>
+              <input type="number" id="quad_target_num" class="num-input" min="50" step="100" value="2500" aria-label="Target quad count" />
+            </div>
+            <input type="range" id="quad_target" min="2500" max="100000" step="2500" value="2500" />
+            <small>Drag, or type an exact count.</small>
+          </div>
+          <div class="field">
+            <label for="quad_sharp_mode">Sharp edges</label>
+            <select id="quad_sharp_mode">
+              <option value="auto" selected>Auto-detect</option>
+              <option value="hard">Hard surface — keep edges</option>
+              <option value="smooth">Smooth — organic</option>
             </select>
           </div>
           <div class="field">
-            <label>Max distance <b id="v-swdist">∞</b></label>
-            <input type="range" id="sw_distance" min="0" max="100" step="1" value="0" />
-            <small>0 = unlimited. Verts farther than this stay put.</small>
+            <div class="field-line">
+              <label for="quad_sharp_angle">Sharp angle</label>
+              <b class="readout" id="v-qsharp">35°</b>
+            </div>
+            <input type="range" id="quad_sharp_angle" min="10" max="90" step="1" value="35" />
+            <small>Edges bent more than this count as sharp.</small>
+          </div>
+          <div class="checks">
+            <label><input type="checkbox" id="quad_colorize" checked /> Color by curvature</label>
+          </div>
+        </div>
+
+        <!-- TRIS mode -->
+        <div id="tris-settings">
+          <div class="field">
+            <div class="field-line"><label for="flat_factor">Flat-area edge size</label><b class="readout" id="v-flat">2.5×</b></div>
+            <input type="range" id="flat_factor" min="1" max="10" step="0.1" value="2.5" />
+            <small>How coarse flat regions become.</small>
           </div>
           <div class="field">
-            <label>Offset (inflation) <b id="v-swoff">0%</b></label>
+            <div class="field-line"><label for="detail_factor">Detail edge size</label><b class="readout" id="v-detail">0.9×</b></div>
+            <input type="range" id="detail_factor" min="0.3" max="4" step="0.1" value="0.9" />
+            <small>How fine detailed regions stay.</small>
+          </div>
+          <div class="field">
+            <div class="field-line"><label for="contrast">Contrast</label><b class="readout" id="v-contrast">2.5</b></div>
+            <input type="range" id="contrast" min="0.5" max="6" step="0.1" value="2.5" />
+            <small>Sharpness of the flat ⇄ detailed transition.</small>
+          </div>
+          <div class="field">
+            <div class="field-line"><label for="feature_angle">Feature angle</label><b class="readout" id="v-feat">30°</b></div>
+            <input type="range" id="feature_angle" min="0" max="120" step="1" value="30" />
+            <small>Creases sharper than this are preserved.</small>
+          </div>
+          <div class="field">
+            <div class="field-line"><label for="iterations">Iterations</label><b class="readout" id="v-iter">8</b></div>
+            <input type="range" id="iterations" min="1" max="20" step="1" value="8" />
+            <small>More passes, smoother triangles.</small>
+          </div>
+          <div class="field">
+            <div class="field-line"><label for="max_work_faces">Detail retention</label><b class="readout" id="v-ret">60k</b></div>
+            <input type="range" id="max_work_faces" min="10000" max="200000" step="10000" value="60000" />
+            <small>Higher keeps more detail on dense models.</small>
+          </div>
+          <div class="checks">
+            <label><input type="checkbox" id="pre_simplify" /> Pre-simplify huge meshes</label>
+            <label><input type="checkbox" id="colorize" checked /> Color by curvature</label>
+            <label><input type="checkbox" id="preserve_boundary" checked /> Preserve boundary</label>
+          </div>
+        </div>
+
+        <button id="btn-remesh" class="btn-primary" disabled>Remesh</button>
+      </div>
+
+      <!-- POSTPROCESS — appears once there is a result -->
+      <div class="section" id="postprocess" hidden>
+        <div class="section-head"><span class="section-name">Postprocess</span><span class="quad-rule" aria-hidden="true"></span></div>
+        <div class="checks">
+          <label><input type="checkbox" id="sw_enable" /> Shrinkwrap onto original</label>
+        </div>
+        <small class="section-hint">Shows the original as a ghost, then wraps the remesh onto it.</small>
+        <div id="sw_controls" hidden>
+          <div class="field">
+            <label for="sw_mode">Type</label>
+            <select id="sw_mode">
+              <option value="nearest">Nearest surface</option>
+              <option value="project">Project along normals</option>
+            </select>
+          </div>
+          <div class="field">
+            <div class="field-line"><label for="sw_distance">Max distance</label><b class="readout" id="v-swdist">∞</b></div>
+            <input type="range" id="sw_distance" min="0" max="100" step="1" value="0" />
+            <small>0 = unlimited. Farther vertices stay put.</small>
+          </div>
+          <div class="field">
+            <div class="field-line"><label for="sw_offset">Offset</label><b class="readout" id="v-swoff">0%</b></div>
             <input type="range" id="sw_offset" min="0" max="5" step="0.1" value="0" />
-            <small>Size of the wrap above the surface (0 = on surface, 5% max).</small>
+            <small>Inflation above the surface, up to 5%.</small>
           </div>
           <div class="btn-row">
-            <button id="sw_wrap" class="primary">Wrap</button>
-            <button id="sw_reset" class="secondary">Reset</button>
+            <button id="sw_wrap" class="btn-primary">Wrap</button>
+            <button id="sw_reset" class="btn-outline">Reset</button>
           </div>
         </div>
       </div>
 
-      <button id="btn-open" class="ghost">Open another file…</button>
-      <input type="file" id="file-input" accept=".fbx,.glb,.gltf,.obj,.ply,.stl" hidden />
+      <div class="sidebar-fill"></div>
 
-      <div class="demo-row">
-        <label class="demo-label">Load demo</label>
-        <select id="demo-select" class="preset-select">
-          <option value="">— choose a demo mesh —</option>
-        </select>
-      </div>
-
-      <div class="legend">
+      <!-- LEGEND + EXPORT — pinned to the bottom -->
+      <div class="legend" title="Curvature color scale">
         <div class="legend-bar"></div>
         <div class="legend-labels"><span>flat</span><span>detailed</span></div>
       </div>
 
-      <!-- EXPORT — at the bottom of the panel -->
       <div class="section" id="export-section">
-        <div class="section-title">EXPORT</div>
-        <button id="btn-export" class="primary" disabled title="Export remeshed mesh">Export remeshed</button>
-        <div class="export-menu hidden" id="export-menu">
-          <button data-fmt="obj" title="Keeps quad faces">OBJ · quads</button>
-          <button data-fmt="glb" title="Triangulated (format is tri-only)">GLB</button>
-          <button data-fmt="ply" title="Triangulated">PLY</button>
-          <button data-fmt="stl" title="Triangulated">STL</button>
+        <div class="section-head"><span class="section-name">Export</span><span class="quad-rule" aria-hidden="true"></span></div>
+        <button id="btn-export" class="btn-good" disabled>Export remeshed</button>
+        <div class="export-menu hidden" id="export-menu" role="menu">
+          <button data-fmt="obj" title="Keeps quad faces">OBJ <span class="fmt-note">quads</span></button>
+          <button data-fmt="glb" title="Triangulated — the format is tri-only">GLB <span class="fmt-note">tris</span></button>
+          <button data-fmt="ply" title="Triangulated">PLY <span class="fmt-note">tris</span></button>
+          <button data-fmt="stl" title="Triangulated">STL <span class="fmt-note">tris</span></button>
         </div>
-        <small class="muted-note">OBJ keeps quads. GLB/PLY/STL are triangle-only formats.</small>
+        <small class="section-hint">OBJ keeps quads. GLB, PLY and STL are triangle-only formats.</small>
       </div>
     </aside>
 
@@ -212,11 +232,11 @@
         <div class="panel-tag">ORIGINAL</div>
         <canvas id="canvas-left"></canvas>
       </section>
-      <div class="divider" id="divider"></div>
+      <div class="divider" id="divider" role="separator" aria-label="Resize panes"></div>
       <section class="panel" id="panel-right">
         <div class="panel-tag panel-tag-right">REMESHED</div>
         <canvas id="canvas-right"></canvas>
-        <div class="empty-hint" id="empty-right">Press <b>Remesh</b> to generate</div>
+        <div class="empty-hint" id="empty-right"><span class="hint-grid" aria-hidden="true"></span>Press <b>Remesh</b> to generate</div>
       </section>
     </main>
   </div>
