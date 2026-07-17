@@ -342,7 +342,29 @@ async function doRemesh() {
   document.getElementById("btn-open").disabled = true;
   document.getElementById("demo-select").disabled = true;
   document.body.classList.add("busy");
-  setStatus("Remeshing …", true);
+  btn.classList.add("busy");
+  const btnLabel = btn.textContent;
+  btn.textContent = "Working…";
+
+  // Live progress: the remesh can take seconds (QuadWild) to minutes (NeurCross)
+  // and AutoRemesher runs silently in a subprocess, so without a ticking elapsed
+  // counter the app looks frozen. Show the engine + target + elapsed, updated
+  // every 200ms, so it's obvious the job is alive.
+  const isQuad = state.mode === "quad";
+  const engineLabel = isQuad
+    ? document.querySelector(`#quad_engine option[value="${document.getElementById("quad_engine").value}"]`)?.textContent || "quad"
+    : "tris";
+  const targetLabel = isQuad
+    ? `${Math.max(1, Math.round(+val("quad_target_num") || +val("quad_target")))}q`
+    : `${+val("iterations")}i`;
+  const t0 = performance.now();
+  const tick = () => {
+    const secs = ((performance.now() - t0) / 1000).toFixed(1);
+    setStatus(`Remeshing — ${engineLabel} · ${targetLabel} · ${secs}s …`, true);
+  };
+  tick();
+  const progressTimer = setInterval(tick, 200);
+  const stopTimer = () => clearInterval(progressTimer);
   try {
     const isQuad = state.mode === "quad";
     const body = isQuad ? {
@@ -373,6 +395,7 @@ async function doRemesh() {
     });
     if (!res.ok) throw new Error((await res.text()) || "remesh failed");
     const s = await res.json();
+    stopTimer();
     if (state.sessionId !== sid) return;   // another model was loaded meanwhile — drop this result
     document.getElementById("st-orig").textContent = fmtTri(s.orig.faces);
     const procLabel = s.quads != null ? `${fmtTri(s.quads)}q` : fmtTri(s.proc.faces);
@@ -394,10 +417,13 @@ async function doRemesh() {
       : `Done — ${fmtTri(s.proc.faces)} tris (-${s.face_reduction_pct}%) in ${(s.elapsed_ms / 1000).toFixed(2)}s`;
     setStatus(doneMsg);
   } catch (e) {
+    stopTimer();
     setStatus("Error: " + e.message);
     alert("Remesh failed:\n" + e.message);
   } finally {
     btn.disabled = false;
+    btn.classList.remove("busy");
+    btn.textContent = btnLabel;
     document.getElementById("btn-open").disabled = false;
     document.getElementById("demo-select").disabled = false;
     document.body.classList.remove("busy");

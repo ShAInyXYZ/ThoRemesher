@@ -355,6 +355,25 @@ button { font-family: var(--ui); }
 }
 .btn-primary:hover:not(:disabled) { filter: brightness(1.07); }
 .btn-primary:active:not(:disabled) { transform: translateY(1px); filter: brightness(0.95); }
+/* Busy state during remesh: spinner + label swap so the disabled button still
+   communicates "working", not "dead". The .busy span label is injected by JS. */
+.btn-primary.busy {
+  position: relative;
+  opacity: 0.85;
+  cursor: progress;
+}
+.btn-primary.busy::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 10px; height: 10px;
+  border: 1.5px solid var(--acc-ink);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
 .btn-good {
   background: var(--bg2);
   color: var(--acc);
