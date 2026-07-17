@@ -412,8 +412,13 @@ async function doRemesh() {
     document.getElementById("btn-export").disabled = false;
     document.getElementById("postprocess").hidden = false;  // enable shrinkwrap
     resetShrinkwrapUI();
+    // honest engine reporting: if the requested engine fell back to another
+    // (unavailable / crashed), say so instead of claiming it ran.
+    const engineLabel = s.quad_engine_requested && s.quad_engine !== s.quad_engine_requested
+      ? `${s.quad_engine_requested} → ${s.quad_engine}`
+      : s.quad_engine;
     const doneMsg = s.quads != null
-      ? `Done — ${fmtTri(s.quads)} quads (${s.quad_ratio}% quad) [${s.quad_engine}] in ${(s.elapsed_ms / 1000).toFixed(2)}s`
+      ? `Done — ${fmtTri(s.quads)} quads (${s.quad_ratio}% quad) [${engineLabel}] in ${(s.elapsed_ms / 1000).toFixed(2)}s`
       : `Done — ${fmtTri(s.proc.faces)} tris (-${s.face_reduction_pct}%) in ${(s.elapsed_ms / 1000).toFixed(2)}s`;
     setStatus(doneMsg);
   } catch (e) {

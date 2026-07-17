@@ -88,28 +88,28 @@ def _put_session(sid: str, sess: Session) -> None:
 # --------------------------------------------------------------------------- #
 class RemeshRequest(BaseModel):
     session_id: str
-    flat_factor: float = 3.0
-    detail_factor: float = 1.0
-    contrast: float = 2.0
-    feature_angle: float = 30.0
-    iterations: int = 6
+    flat_factor: float = Field(3.0, ge=0.1, le=100.0)
+    detail_factor: float = Field(1.0, ge=0.1, le=100.0)
+    contrast: float = Field(2.0, ge=0.1, le=100.0)
+    feature_angle: float = Field(30.0, ge=1.0, le=179.0)
+    iterations: int = Field(6, ge=1, le=50)
     pre_simplify: bool = False
-    pre_simplify_target: float = 0.25
+    pre_simplify_target: float = Field(0.25, gt=0.0, le=1.0)
     preserve_boundary: bool = True
     colorize: bool = True
-    max_work_faces: int = 50000
+    max_work_faces: int = Field(50000, ge=100, le=2_000_000)
     # Quad mode
     quad: bool = False
-    quad_target: int = 2000         # approx quad count (density)
+    quad_target: int = Field(2000, ge=50, le=2_000_000)  # approx quad count (density)
     quad_sharp_mode: str = "auto"   # "auto" | "hard" (keep sharp edges) | "smooth"
-    quad_sharp_angle: float = 35.0  # dihedral angle that counts as a sharp edge
-    quad_work_faces: int = 15000
+    quad_sharp_angle: float = Field(35.0, ge=1.0, le=179.0)  # dihedral angle that counts as a sharp edge
+    quad_work_faces: int = Field(15000, ge=100, le=500_000)
     quad_engine: str = "quadwild"   # "quadwild" | "neurcross" | "autoremesher" | "visibility" | "shrinkwrap" | "humanlogic"
-    quad_adaptivity: float = 0.7    # 0 uniform → 1 fully curvature-adaptive (AutoRemesher only)
+    quad_adaptivity: float = Field(0.7, ge=0.0, le=1.0)  # 0 uniform → 1 fully curvature-adaptive (AutoRemesher only)
     # legacy HumanLogic-only knobs (ignored by quadwild; kept for that engine)
-    quad_feature_angle: float = 35.0
-    quad_feature_weight: float = 8.0
-    quad_ridge_weight: float = 3.0
+    quad_feature_angle: float = Field(35.0, ge=1.0, le=179.0)
+    quad_feature_weight: float = Field(8.0, ge=0.0, le=1000.0)
+    quad_ridge_weight: float = Field(3.0, ge=0.0, le=1000.0)
 
 
 class ShrinkwrapRequest(BaseModel):
@@ -449,20 +449,21 @@ def remesh(req: RemeshRequest):
     # ---- HumanLogic quad mode ----
     if req.quad:
         _t0 = time.time()
-        engine_name = req.quad_engine
+        engine_requested = req.quad_engine
+        engine_used = engine_requested   # terminal engines can't fall back
         try:
             if req.quad_engine == "neurcross":
-                qv, quads, qtris = eng.neurcross_quad(
+                qv, quads, qtris, engine_used = eng.neurcross_quad(
                     V, F, target=req.quad_target, work_faces=req.quad_work_faces,
                 )
             elif req.quad_engine == "autoremesher":
-                qv, quads, qtris = eng.autoremesher_quad(
+                qv, quads, qtris, engine_used = eng.autoremesher_quad(
                     V, F, target=req.quad_target, work_faces=req.quad_work_faces,
                     adaptivity=req.quad_adaptivity,
                     sharp_mode=req.quad_sharp_mode, sharp_angle=req.quad_sharp_angle,
                 )
             elif req.quad_engine == "quadwild":
-                qv, quads, qtris = eng.quadwild_quad(
+                qv, quads, qtris, engine_used = eng.quadwild_quad(
                     V, F, target=req.quad_target, work_faces=req.quad_work_faces,
                     sharp_mode=req.quad_sharp_mode, sharp_angle=req.quad_sharp_angle,
                 )
@@ -483,7 +484,7 @@ def remesh(req: RemeshRequest):
                     V, F, target=req.quad_target, work_faces=req.quad_work_faces,
                 )
         except Exception as e:  # noqa: BLE001
-            raise HTTPException(status_code=500, detail=f"{engine_name} failed: {e}")
+            raise HTTPException(status_code=500, detail=f"{engine_requested} failed: {e}")
         tri = eng.triangulate_quads(quads, qtris)
         sess.proc = (qv, tri)
         sess.proc_color = _compute_colors(qv, tri) if req.colorize else None
@@ -499,7 +500,8 @@ def remesh(req: RemeshRequest):
             "quads": n_quads,
             "tris_left": n_tris,
             "quad_ratio": round(100.0 * n_quads / max(proc_faces, 1), 1),
-            "quad_engine": engine_name,
+            "quad_engine": engine_used,                # the engine that ACTUALLY ran
+            "quad_engine_requested": engine_requested, # differs when a fallback fired
             "face_reduction_pct": round(100.0 * (1.0 - proc_faces / max(len(F), 1)), 2),
             "elapsed_ms": int((time.time() - _t0) * 1000),
         }

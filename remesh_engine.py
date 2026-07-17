@@ -565,7 +565,8 @@ def quadwild_quad(vertices, faces, target=2000, work_faces=6000,
                   preprocess=True, pre_smooth=4, sharp_mode="auto",
                   sharp_angle=35.0):
     """MODERN default: QuadWild-BiMDF (quadwild.py) feature-line-driven pure-quad
-    remesh. Returns (V, q, tris). Falls back to the in-house engine on failure.
+    remesh. Returns (V, q, tris, engine_used). Falls back to the in-house
+    visibility-shell engine on failure, reporting "visibility" as engine_used.
 
     target     : approximate quad count -> mapped to QuadWild's scaleFact density.
     sharp_mode : "auto" (detect creases) | "hard" (always preserve sharp edges) |
@@ -598,18 +599,19 @@ def quadwild_quad(vertices, faces, target=2000, work_faces=6000,
         if res is not None:
             P, Q, T = res
             if len(Q):
-                return P, Q, T
+                return P, Q, T, "quadwild"
     # fallback: in-house engine (never leave the user without a result)
-    return visibility_shell_quad(vertices, faces, target=target,
-                                 work_faces=work_faces, preprocess=preprocess,
-                                 pre_smooth=pre_smooth)
+    return (*visibility_shell_quad(vertices, faces, target=target,
+                                   work_faces=work_faces, preprocess=preprocess,
+                                   pre_smooth=pre_smooth), "visibility")
 
 
 def neurcross_quad(vertices, faces, target=2000, work_faces=6000,
                    preprocess=True, pre_smooth=4, n_samples=2000):
     """NeurCross-steered quad remesh (neurcross.py): a NEURAL cross field drives
     QuadWild's extraction. Best for smooth/organic shapes. SLOW (minutes/mesh, GPU).
-    Falls back to quadwild_quad if NeurCross is unavailable or fails."""
+    Returns (V, q, tris, engine_used). Falls back to quadwild_quad if NeurCross
+    is unavailable or fails (engine_used then comes from that chain)."""
     import neurcross as nc
 
     V = np.asarray(vertices, np.float64)
@@ -620,7 +622,7 @@ def neurcross_quad(vertices, faces, target=2000, work_faces=6000,
         scale_fact = float(np.clip(np.sqrt(4200.0 / max(target, 50)), 0.15, 3.0))
         res = nc.remesh(V, F, scale_fact=scale_fact, n_samples=n_samples)
         if res is not None and len(res[1]):
-            return res
+            return (*res, "neurcross")
     # fall back to vanilla QuadWild (never leave the user without a result)
     return quadwild_quad(vertices, faces, target=target, work_faces=work_faces,
                          preprocess=preprocess, pre_smooth=pre_smooth)
@@ -640,8 +642,8 @@ def autoremesher_quad(vertices, faces, target=2000, work_faces=6000,
     sharp_mode  : "auto" | "hard" (keep creases) | "smooth" (organic).
     sharp_angle : dihedral angle (deg) that counts as a sharp edge.
 
-    Falls back to quadwild_quad on unavailability/failure (same chain as
-    neurcross_quad)."""
+    Returns (V, q, tris, engine_used). Falls back to quadwild_quad on
+    unavailability/failure (engine_used then comes from that chain)."""
     import autoremesher as ar
 
     V = np.asarray(vertices, np.float64)
@@ -653,7 +655,7 @@ def autoremesher_quad(vertices, faces, target=2000, work_faces=6000,
         res = ar.remesh(V, F, target_quad=target, adaptivity=adaptivity,
                         sharp=sharp, sharp_thr=sharp_angle)
         if res is not None and len(res[1]):
-            return res
+            return (*res, "autoremesher")
     # fall back to QuadWild (never leave the user without a result)
     return quadwild_quad(vertices, faces, target=target, work_faces=work_faces,
                          preprocess=preprocess, pre_smooth=pre_smooth,
