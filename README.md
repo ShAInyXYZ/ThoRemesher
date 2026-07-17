@@ -150,9 +150,38 @@ pip install -r requirements.txt
 | `visibility_shells.py`, `seam_stitch.py`, `humanlogic.py`, `coarsen.py`, `shrinkwrap.py` | in-house quad engines (fallbacks / alternates) |
 | `static/` | three.js viewers, UI, styles |
 
+## Credits
+
+ThoRemesher stands on the shoulders of several open-source geometry-processing
+projects. The quad engines are vendored separately (gitignored — fetch with
+`./setup.sh`); the libraries are pip dependencies.
+
+### Quad engines (vendored)
+
+| Project | Repo | License | Role |
+|---|---|---|---|
+| **QuadWild-BiMDF** | [cgg-bern/quadwild-bimdf](https://github.com/cgg-bern/quadwild-bimdf) | GPL-3 | Default quad engine — feature-line-driven pure-quad remeshing (CGG Bern, TOG 2023); Bi-MDF / libSatsuma flow solver |
+| **AutoRemesher** | [huxingyi/autoremesher](https://github.com/huxingyi/autoremesher) | MIT | Adaptive quad engine — by Jeremy HU / Dust3D; built on Geogram's `FrameField` + `GlobalParam2d::quad_cover` for curvature-adaptive quad density |
+| **Geogram** | [BrunoLevy/geogram](https://github.com/BrunoLevy/geogram) | BSD-3-Clause | The `FrameField` + `quad_cover` parameterization at the core of the AutoRemesher engine (vendored via AutoRemesher); by Bruno Lévy / Inria |
+| **NeurCross** | [QiujieDong/NeurCross](https://github.com/QiujieDong/NeurCross) | AGPL-3 | Optional neural cross-field engine (SIGGRAPH 2025) for organic shapes |
+
+### Libraries
+
+| Library | Repo | License | Role |
+|---|---|---|---|
+| **libigl** | [libigl/libigl](https://github.com/libigl/libigl) | MPL-2.0 | Principal-curvature region classification, cross-field singularities |
+| **robust-laplacian** | [nmwsharp/robust-laplacian](https://github.com/nmwsharp/robust-laplacian) | MIT | Robust mean-curvature heatmap (Sharp & Crane 2020) |
+| **pymeshlab** | [cnr-isti-vclab/PyMeshLab](https://github.com/cnr-isti-vclab/PyMeshLab) | GPL-3 | Mesh I/O, decimation, quad-OBJ export |
+| **trimesh** | [mikedh/trimesh](https://github.com/mikedh/trimesh) | MIT | Mesh utilities, KD-tree transfer, GLB serialization |
+| **three.js** | [mrdoob/three.js](https://github.com/mrdoob/three.js) | MIT | The WebGL before/after split viewer |
+
+The research behind ThoRemesher's operators draws on: Knöppel et al. (*Globally
+Optimal Direction Fields*, 2013), Sharp & Crane (*You Can Find Geodesic Paths...*, 2020),
+Pietroni et al. (QuadWild, 2021), and the QuadCover / MIQ lineage.
+
 ---
 
 <p align="center">
-  See the vendored engines for their own (GPL-3 / AGPL-3) licenses.
+  See the vendored engines for their own licenses. ThoRemesher itself is MIT.
 </p>
 </content>
